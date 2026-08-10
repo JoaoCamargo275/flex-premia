@@ -1,0 +1,160 @@
+// Schema do FlexPremia (backend)
+// Dev local usa SQLite (ver DATABASE_URL no .env). Em produção (Render),
+// trocar o provider para "postgresql" e apontar para o Postgres do Render
+// (ou Neon/Supabase) — ver README.md.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite não suporta enum nativo do Prisma, então usamos String aqui e
+// validamos os valores na camada de aplicação (ver src/lib/types.ts).
+// Valores válidos:
+//   Role: MASTER | SUPERVISOR | COLABORADOR
+//   SaleStatus: PENDENTE | EM_ANDAMENTO | ATIVADA | CANCELADA
+//   Indicator: RENOV_MV | RENOV_FB | RENOV_AVA_DADOS | RENOV_AVA_VOZ | ALTAS | APARELHOS
+
+model Team {
+  id           String   @id @default(cuid())
+  name         String
+  supervisorId String?  @unique
+  supervisor   User?    @relation("TeamSupervisor", fields: [supervisorId], references: [id])
+  members      User[]   @relation("TeamMembers")
+  createdAt    DateTime @default(now())
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         String
+  active       Boolean  @default(true)
+  mustChangePassword Boolean @default(false)
+
+  teamId       String?
+  team         Team?    @relation("TeamMembers", fields: [teamId], references: [id])
+  teamAsSupervisor Team? @relation("TeamSupervisor")
+
+  createdById  String?
+  createdBy    User?    @relation("UserCreatedBy", fields: [createdById], references: [id])
+  createdUsers User[]   @relation("UserCreatedBy")
+
+  sales        Sale[]   @relation("SaleColaborador")
+  statusChanges SaleStatusHistory[] @relation("StatusChangedBy")
+  attendanceFlags AttendanceFlag[] @relation("AttendanceFlagUser")
+  attendanceFlagsSetBy AttendanceFlag[] @relation("AttendanceFlagSetBy")
+
+  createdAt    DateTime @default(now())
+}
+
+// Catálogo de produtos/pontos — seed a partir do index.html do simulador.
+model CatalogItem {
+  id        String    @id @default(cuid())
+  indicator String
+  categoryId String?  // subcategoria de ALTAS (ex: "movel", "tv", ...) — null para MV/FB/AVA
+  categoryName String?
+  categoryIcon String?
+  label     String
+  points    Int
+  price     Float?
+  order     Int       @default(0)
+  active    Boolean   @default(true)
+
+  saleItems SaleItem[]
+}
+
+// Tabelas de faixas (RENOV. MV, RENOV. FB/AVA, ALTAS) — seed do index.html.
+model FaixaTable {
+  id        String   @id @default(cuid())
+  indicator String // RENOV_MV | RENOV_FB (usado p/ FB/AVA combinado) | ALTAS
+  faixa     Int
+  pts       Int
+  valor     Float
+  aparelhos Float
+  metaPct   String
+  pctFinal  Float?
+
+  @@unique([indicator, faixa])
+}
+
+// Régua de faixa de Aparelhos por valor vendido (determinante, R$6k-20k)
+model AparelhoFaixa {
+  id      String @id @default(cuid())
+  faixa   Int    @unique
+  valor   Float
+  metaPct String
+}
+
+// Tabela de bônus em R$ de Aparelhos (R$10k-50k)
+model AparelhoBonus {
+  id     String @id @default(cuid())
+  faixa  Int    @unique
+  valor  Float
+  mult   Float
+}
+
+model Sale {
+  id           String     @id @default(cuid())
+  colaboradorId String
+  colaborador  User       @relation("SaleColaborador", fields: [colaboradorId], references: [id])
+
+  clienteNome  String
+  clienteCnpj  String
+
+  status       String     @default("PENDENTE")
+  ativo        Boolean    @default(false)
+  dataAtivacao DateTime?
+  observacao   String?
+
+  items        SaleItem[]
+  statusHistory SaleStatusHistory[]
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model SaleItem {
+  id            String       @id @default(cuid())
+  saleId        String
+  sale          Sale         @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  indicator     String
+  catalogItemId String?
+  catalogItem   CatalogItem? @relation(fields: [catalogItemId], references: [id])
+  label         String
+  quantity      Float        // para Aparelhos, é o valor em R$ vendido (quantity=1, pointsUnit=0, valorReais=valor)
+  pointsUnit    Int          // pontos unitários congelados no momento da venda
+  pointsTotal   Int          // quantity * pointsUnit (0 para Aparelhos)
+  valorReais    Float?       // usado apenas para itens de Aparelhos (valor vendido)
+}
+
+model SaleStatusHistory {
+  id            String     @id @default(cuid())
+  saleId        String
+  sale          Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  statusAnterior String?
+  statusNovo    String
+  alteradoEm    DateTime   @default(now())
+  alteradoPorId String
+  alteradoPor   User       @relation("StatusChangedBy", fields: [alteradoPorId], references: [id])
+}
+
+// Falta injustificada por colaborador/mês — zera a premiação do período (regra de assiduidade)
+model AttendanceFlag {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation("AttendanceFlagUser", fields: [userId], references: [id])
+  yearMonth     String   // formato "YYYY-MM"
+  faltouInjustificada Boolean @default(true)
+  setById       String
+  setBy         User     @relation("AttendanceFlagSetBy", fields: [setById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([userId, yearMonth])
+}
