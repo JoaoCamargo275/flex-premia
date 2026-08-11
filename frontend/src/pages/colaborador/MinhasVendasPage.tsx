@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
 import { INDICATOR_LABELS } from "../../lib/types";
-import { SaleActions } from "./SaleActions";
+import { SaleItemActions, SaleFooterActions } from "./SaleActions";
 
 interface SaleItem {
   id: string;
@@ -12,13 +12,13 @@ interface SaleItem {
   pointsTotal: number;
   valorReais: number | null;
   observacao: string | null;
+  status: string;
+  ativo: boolean;
 }
 interface Sale {
   id: string;
   clienteNome: string;
   clienteCnpj: string;
-  status: string;
-  ativo: boolean;
   cancelado: boolean;
   createdAt: string;
   items: SaleItem[];
@@ -59,8 +59,8 @@ export default function MinhasVendasPage() {
       <div>
         <h1 className="text-xl font-bold">Minhas vendas</h1>
         <p className="text-sm text-ink-dim">
-          Acompanhe o status de cada venda e marque como <b>Ativo</b> quando ela for efetivamente
-          ativada — só assim ela conta pontos para sua faixa e premiação.
+          Cada produto tem seu próprio status e flag de <b>Ativo</b> — marque um produto como ativo assim
+          que ele for efetivamente ativado, só assim ele conta pontos para sua faixa e premiação.
         </p>
       </div>
 
@@ -86,7 +86,11 @@ export default function MinhasVendasPage() {
           const pontosTotal = sale.items.reduce((acc, i) => acc + i.pointsTotal, 0);
           const valorAparelhos = sale.items.reduce((acc, i) => acc + (i.valorReais ?? 0), 0);
           const expanded = expandedId === sale.id;
-          const podeExcluir = !sale.ativo && !sale.cancelado && sale.status.trim().toLowerCase() === "pendente";
+          const itensAtivos = sale.items.filter((i) => i.ativo).length;
+          const todosAtivos = itensAtivos > 0 && itensAtivos === sale.items.length;
+          const algumAtivo = itensAtivos > 0;
+          const podeExcluir =
+            !sale.cancelado && sale.items.every((i) => !i.ativo && i.status.trim().toLowerCase() === "pendente");
 
           return (
             <div key={sale.id} className={idx > 0 ? "border-t border-white/5" : undefined}>
@@ -98,7 +102,7 @@ export default function MinhasVendasPage() {
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{
-                    background: sale.cancelado ? "var(--accent-3)" : sale.ativo ? "var(--good, #22c55e)" : "var(--ink-dim)",
+                    background: sale.cancelado ? "var(--accent-3)" : algumAtivo ? "var(--good, #22c55e)" : "var(--ink-dim)",
                   }}
                 />
                 <div className="flex-1 min-w-0">
@@ -107,7 +111,6 @@ export default function MinhasVendasPage() {
                     CNPJ {maskCnpjDisplay(sale.clienteCnpj)} · {new Date(sale.createdAt).toLocaleDateString("pt-BR")}
                   </div>
                 </div>
-                <div className="text-xs text-ink-dim hidden sm:block max-w-[200px] truncate">{sale.status}</div>
                 <div className="text-right shrink-0">
                   {pontosTotal > 0 && <div className="font-bold text-accent-2 text-sm">{fmtNum(pontosTotal)} pts</div>}
                   {valorAparelhos > 0 && <div className="font-bold text-accent-2 text-sm">{fmtBRL(valorAparelhos)}</div>}
@@ -117,39 +120,64 @@ export default function MinhasVendasPage() {
                   style={
                     sale.cancelado
                       ? { background: "rgba(255,77,109,.14)", color: "var(--accent-3)" }
-                      : sale.ativo
+                      : todosAtivos
                       ? { background: "rgba(34,197,94,.14)", color: "var(--good, #22c55e)" }
+                      : algumAtivo
+                      ? { background: "rgba(236,26,114,.14)", color: "var(--accent)" }
                       : { background: "rgba(255,255,255,.06)", color: "var(--ink-dim)" }
                   }
                 >
-                  {sale.cancelado ? "Cancelada" : sale.ativo ? "Ativo" : "Pendente"}
+                  {sale.cancelado
+                    ? "Cancelada"
+                    : todosAtivos
+                    ? "Todos ativos"
+                    : algumAtivo
+                    ? `${itensAtivos}/${sale.items.length} ativos`
+                    : "Pendente"}
                 </span>
                 <span className="text-ink-dim shrink-0">{expanded ? "▲" : "▼"}</span>
               </button>
 
               {expanded && (
                 <div className="px-4 pb-4 flex flex-col gap-3">
-                  <ul className="text-sm text-ink-dim flex flex-col gap-0.5">
+                  <ul className="flex flex-col gap-2">
                     {sale.items.map((item) => (
-                      <li key={item.id}>
-                        {INDICATOR_LABELS[item.indicator as keyof typeof INDICATOR_LABELS] ?? item.indicator} —{" "}
-                        {item.label}
-                        {item.indicator === "APARELHOS"
-                          ? ` · ${fmtBRL(item.valorReais ?? 0)}`
-                          : ` x${item.quantity} · ${item.pointsTotal} pts`}
-                        {item.observacao && <span className="italic"> — "{item.observacao}"</span>}
+                      <li key={item.id} className="rounded-lg bg-white/[.02] p-2.5 flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="text-sm text-ink-dim">
+                            <span className="font-semibold text-ink">
+                              {INDICATOR_LABELS[item.indicator as keyof typeof INDICATOR_LABELS] ?? item.indicator}
+                            </span>{" "}
+                            — {item.label}
+                            {item.indicator === "APARELHOS"
+                              ? ` · ${fmtBRL(item.valorReais ?? 0)}`
+                              : ` x${item.quantity} · ${item.pointsTotal} pts`}
+                            {item.observacao && <span className="italic"> — "{item.observacao}"</span>}
+                          </span>
+                          <span
+                            className="text-[.62rem] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                            style={
+                              item.ativo
+                                ? { background: "rgba(34,197,94,.14)", color: "var(--good, #22c55e)" }
+                                : { background: "rgba(255,255,255,.06)", color: "var(--ink-dim)" }
+                            }
+                          >
+                            {item.ativo ? "Ativo" : item.status}
+                          </span>
+                        </div>
+                        <SaleItemActions
+                          saleId={sale.id}
+                          itemId={item.id}
+                          status={item.status}
+                          ativo={item.ativo}
+                          cancelado={sale.cancelado}
+                          onChanged={load}
+                        />
                       </li>
                     ))}
                   </ul>
 
-                  <SaleActions
-                    saleId={sale.id}
-                    status={sale.status}
-                    ativo={sale.ativo}
-                    cancelado={sale.cancelado}
-                    podeExcluir={podeExcluir}
-                    onChanged={load}
-                  />
+                  <SaleFooterActions saleId={sale.id} cancelado={sale.cancelado} podeExcluir={podeExcluir} onChanged={load} />
                 </div>
               )}
             </div>

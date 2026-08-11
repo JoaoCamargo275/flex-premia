@@ -64,6 +64,7 @@ function QtyInput({ value, onChange }: { value: number; onChange: (v: number) =>
         min={0}
         value={value}
         onChange={(e) => onChange(Math.max(0, parseInt(e.target.value) || 0))}
+        onFocus={(e) => e.target.select()}
         className="w-12 text-center bg-transparent font-bold"
       />
       <button

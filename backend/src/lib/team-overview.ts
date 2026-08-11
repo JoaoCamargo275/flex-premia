@@ -43,9 +43,11 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
       : {}),
   };
 
+  // "Venda ativada" aqui = venda com pelo menos um produto já ativo (a
+  // ativação em si é controlada por produto, ver SaleItem.ativo).
   const [vendasLancadas, vendasAtivadas] = await Promise.all([
     prisma.sale.count({ where }),
-    prisma.sale.count({ where: { ...where, ativo: true } }),
+    prisma.sale.count({ where: { ...where, items: { some: { ativo: true } } } }),
   ]);
 
   let premiacaoEstimada = 0;
@@ -80,7 +82,7 @@ async function getMonthlyEvolution(userIds: string[]): Promise<MonthlyPoint[]> {
 
   const sales = await prisma.sale.findMany({
     where: { colaboradorId: { in: userIds }, cancelado: false, createdAt: { gte: since } },
-    select: { createdAt: true, ativo: true },
+    select: { createdAt: true, items: { select: { ativo: true } } },
   });
 
   const buckets = new Map<string, MonthlyPoint>();
@@ -97,7 +99,7 @@ async function getMonthlyEvolution(userIds: string[]): Promise<MonthlyPoint[]> {
     const bucket = buckets.get(key);
     if (bucket) {
       bucket.lancadas += 1;
-      if (sale.ativo) bucket.ativadas += 1;
+      if (sale.items.some((i) => i.ativo)) bucket.ativadas += 1;
     }
   }
 

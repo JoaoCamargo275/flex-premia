@@ -159,8 +159,8 @@ const APARELHO_BONUS = [
 
 async function main() {
   console.log("Limpando catálogo/faixas existentes...");
+  await prisma.saleItemStatusHistory.deleteMany();
   await prisma.saleItem.deleteMany();
-  await prisma.saleStatusHistory.deleteMany();
   await prisma.sale.deleteMany();
   await prisma.catalogItem.deleteMany();
   await prisma.faixaTable.deleteMany();

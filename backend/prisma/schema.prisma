@@ -16,8 +16,10 @@ datasource db {
 // validamos os valores na camada de aplicação (ver src/lib/types.ts).
 // Valores válidos:
 //   Role: MASTER | SUPERVISOR | COLABORADOR
-//   Sale.status: texto livre digitado pelo colaborador (ex: "Pendente", "Em instalação"...)
-//     — o cancelamento é controlado à parte pelo campo Sale.cancelado (boolean).
+//   SaleItem.status: texto livre digitado pelo colaborador (ex: "Pendente", "Em instalação"...)
+//     — cada PRODUTO da venda tem seu próprio status e flag "ativo", já que
+//     produtos de uma mesma venda costumam ativar em datas diferentes. O
+//     cancelamento continua sendo por venda inteira (Sale.cancelado).
 //   Indicator: RENOV_MV | RENOV_FB | RENOV_AVA_DADOS | RENOV_AVA_VOZ | ALTAS | APARELHOS
 
 model Team {
@@ -47,7 +49,7 @@ model User {
   createdUsers User[]   @relation("UserCreatedBy")
 
   sales        Sale[]   @relation("SaleColaborador")
-  statusChanges SaleStatusHistory[] @relation("StatusChangedBy")
+  statusChanges SaleItemStatusHistory[] @relation("StatusChangedBy")
   attendanceFlags AttendanceFlag[] @relation("AttendanceFlagUser")
   attendanceFlagsSetBy AttendanceFlag[] @relation("AttendanceFlagSetBy")
 
@@ -108,14 +110,10 @@ model Sale {
   clienteNome  String
   clienteCnpj  String
 
-  status       String     @default("Pendente")
-  ativo        Boolean    @default(false)
   cancelado    Boolean    @default(false)
-  dataAtivacao DateTime?
   observacao   String?
 
   items        SaleItem[]
-  statusHistory SaleStatusHistory[]
 
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -135,17 +133,26 @@ model SaleItem {
   pointsTotal   Int          // quantity * pointsUnit (0 para Aparelhos)
   valorReais    Float?       // usado apenas para itens de Aparelhos (valor vendido)
   observacao    String?      // observação livre sobre o item (usado principalmente em Aparelhos)
+
+  // Cada produto tem seu próprio ciclo de ativação — dois produtos da mesma
+  // venda podem ativar em datas diferentes, então o "ativo" (o que conta
+  // ponto) e o status livre vivem aqui, não na venda como um todo.
+  status        String       @default("Pendente")
+  ativo         Boolean      @default(false)
+  dataAtivacao  DateTime?
+
+  statusHistory SaleItemStatusHistory[]
 }
 
-model SaleStatusHistory {
-  id            String     @id @default(cuid())
-  saleId        String
-  sale          Sale       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+model SaleItemStatusHistory {
+  id             String   @id @default(cuid())
+  saleItemId     String
+  saleItem       SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
   statusAnterior String?
-  statusNovo    String
-  alteradoEm    DateTime   @default(now())
-  alteradoPorId String
-  alteradoPor   User       @relation("StatusChangedBy", fields: [alteradoPorId], references: [id])
+  statusNovo     String
+  alteradoEm     DateTime @default(now())
+  alteradoPorId  String
+  alteradoPor    User     @relation("StatusChangedBy", fields: [alteradoPorId], references: [id])
 }
 
 // Falta injustificada por colaborador/mês — zera a premiação do período (regra de assiduidade)

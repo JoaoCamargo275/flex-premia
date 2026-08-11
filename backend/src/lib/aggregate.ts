@@ -33,12 +33,14 @@ async function sumPontosPorIndicador(
   onlyAtivo: boolean,
   period: PeriodFilter
 ) {
+  // A ativação agora é por PRODUTO (SaleItem.ativo), não mais pela venda
+  // inteira — dois itens da mesma venda podem ativar em datas diferentes.
   const items = await prisma.saleItem.findMany({
     where: {
+      ...(onlyAtivo ? { ativo: true } : {}),
       sale: {
         colaboradorId,
         cancelado: false,
-        ...(onlyAtivo ? { ativo: true } : {}),
         ...(period.from || period.to
           ? {
               createdAt: {

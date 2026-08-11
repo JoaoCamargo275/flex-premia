@@ -12,12 +12,13 @@ interface SaleItem {
   label: string;
   pointsTotal: number;
   valorReais: number | null;
+  status: string;
+  ativo: boolean;
 }
 interface Sale {
   id: string;
   clienteNome: string;
-  status: string;
-  ativo: boolean;
+  cancelado: boolean;
   createdAt: string;
   items: SaleItem[];
 }
@@ -64,18 +65,32 @@ export default function SupervisorColaboradorDetailPage() {
           {data.sales.map((sale) => {
             const pontos = sale.items.reduce((acc, i) => acc + i.pointsTotal, 0);
             const valorAparelhos = sale.items.reduce((acc, i) => acc + (i.valorReais ?? 0), 0);
+            const itensAtivos = sale.items.filter((i) => i.ativo).length;
             return (
               <div key={sale.id} className="border-b border-white/5 pb-3 last:border-0">
                 <div className="flex justify-between text-sm">
                   <span className="font-semibold">
-                    {sale.clienteNome} {sale.ativo && <span className="text-good text-xs font-bold">✓ Ativo</span>}
+                    {sale.clienteNome}{" "}
+                    {sale.cancelado ? (
+                      <span className="text-accent-3 text-xs font-bold">Cancelada</span>
+                    ) : (
+                      itensAtivos > 0 && (
+                        <span className="text-good text-xs font-bold">
+                          ✓ {itensAtivos}/{sale.items.length} ativos
+                        </span>
+                      )
+                    )}
                   </span>
-                  <span className="text-ink-dim text-xs">{sale.status}</span>
                 </div>
-                <div className="text-xs text-ink-dim">
-                  {new Date(sale.createdAt).toLocaleDateString("pt-BR")} ·{" "}
-                  {sale.items.map((i) => `${INDICATOR_LABELS[i.indicator as keyof typeof INDICATOR_LABELS]} ${i.label}`).join(", ")}
-                </div>
+                <ul className="text-xs text-ink-dim flex flex-col gap-0.5 mt-1">
+                  {sale.items.map((i) => (
+                    <li key={i.id}>
+                      {INDICATOR_LABELS[i.indicator as keyof typeof INDICATOR_LABELS]} {i.label} —{" "}
+                      <span className={i.ativo ? "text-good font-semibold" : ""}>{i.ativo ? "Ativo" : i.status}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="text-xs text-ink-dim mt-1">{new Date(sale.createdAt).toLocaleDateString("pt-BR")}</div>
                 <div className="text-xs font-bold text-accent-2">
                   {pontos > 0 && `${pontos} pts`} {valorAparelhos > 0 && fmtBRL(valorAparelhos)}
                 </div>
