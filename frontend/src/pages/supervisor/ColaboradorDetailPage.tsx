@@ -28,13 +28,30 @@ interface DetailResponse {
   sales: Sale[];
 }
 
-function PontosCard({ label, value, color }: { label: string; value: number; color?: string }) {
+// Cada frente tem sua própria régua de faixas, então somar os pontos das 3
+// frentes de pontuação não faz sentido — mostramos lançado/ativado separado
+// por frente (Aparelhos é por valor em R$, não pontos).
+function FrenteCard({
+  icon,
+  label,
+  lancado,
+  ativado,
+  isValor,
+}: {
+  icon: string;
+  label: string;
+  lancado: number;
+  ativado: number;
+  isValor?: boolean;
+}) {
+  const fmt = isValor ? fmtBRL : (n: number) => `${fmtNum(n)} pts`;
   return (
     <div className="card p-4">
-      <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">{label}</div>
-      <div className="text-xl font-extrabold" style={color ? { color } : undefined}>
-        {fmtNum(value)} pts
+      <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">
+        {icon} {label}
       </div>
+      <div className="text-xl font-extrabold text-good">{fmt(ativado)}</div>
+      <div className="text-xs text-ink-dim mt-0.5">de {fmt(lancado)} lançado</div>
     </div>
   );
 }
@@ -56,8 +73,6 @@ export default function SupervisorColaboradorDetailPage() {
   if (!data) return null;
 
   const { painel } = data;
-  const pontosLancados = painel.lancado.ptsMV + painel.lancado.ptsFBAVA + painel.lancado.ptsAltas;
-  const pontosAtivados = painel.ativado.ptsMV + painel.ativado.ptsFBAVA + painel.ativado.ptsAltas;
 
   return (
     <div className="flex flex-col gap-6">
@@ -67,16 +82,16 @@ export default function SupervisorColaboradorDetailPage() {
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <PontosCard label="Pontos lançados" value={pontosLancados} />
-        <PontosCard label="Pontos ativados" value={pontosAtivados} color="var(--good, #22c55e)" />
-        <div className="card p-4">
-          <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">💰 Aparelhos lançado</div>
-          <div className="text-xl font-extrabold">{fmtBRL(painel.lancado.valorAparelhos)}</div>
-        </div>
-        <div className="card p-4">
-          <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">💰 Aparelhos ativado</div>
-          <div className="text-xl font-extrabold text-good">{fmtBRL(painel.ativado.valorAparelhos)}</div>
-        </div>
+        <FrenteCard icon="📱" label="RENOV. MV" lancado={painel.lancado.ptsMV} ativado={painel.ativado.ptsMV} />
+        <FrenteCard icon="🔄" label="RENOV. FB/AVA" lancado={painel.lancado.ptsFBAVA} ativado={painel.ativado.ptsFBAVA} />
+        <FrenteCard icon="🚀" label="ALTAS" lancado={painel.lancado.ptsAltas} ativado={painel.ativado.ptsAltas} />
+        <FrenteCard
+          icon="💰"
+          label="Aparelhos"
+          lancado={painel.lancado.valorAparelhos}
+          ativado={painel.ativado.valorAparelhos}
+          isValor
+        />
       </div>
 
       <div className="card p-4">
