@@ -30,7 +30,9 @@ function bonusAparelhoAtual(rows: AparelhoBonusRow[], valor: number): AparelhoBo
   return atual ?? { faixa: 0, valor: 0, mult: 0 };
 }
 
-const ROW_H = 86; // altura de cada linha da corrida de barras, em px
+const ROW_H = 104; // altura de cada linha da corrida de barras, em px
+const MEDALS = ["🥇", "🥈", "🥉", "🏅"];
+const ICONS: Record<string, string> = { mv: "📱", fbava: "🔄", altas: "🚀", aparelhos: "💰" };
 // As 6 faixas de MV, ALTAS, FB/AVA e Aparelhos (determinante) usam a mesma
 // progressão relativa de meta (60/80/100/120/150/200%), então convertida
 // para fração da Faixa 6 de cada frente, as posições das linhas de grade
@@ -48,7 +50,7 @@ interface BarraFrente {
   faixaLabel: string;
 }
 
-function BarraLinha({ row, top }: { row: BarraFrente; top: number }) {
+function BarraLinha({ row, top, rank }: { row: BarraFrente; top: number; rank: number }) {
   const fracAtivado = row.scaleMax > 0 ? row.ativado / row.scaleMax : 0;
   const fracLancado = row.scaleMax > 0 ? row.lancado / row.scaleMax : 0;
   const widthAtivado = Math.max(0, Math.min(100, fracAtivado * 100));
@@ -61,39 +63,62 @@ function BarraLinha({ row, top }: { row: BarraFrente; top: number }) {
       className="absolute left-0 right-0"
       style={{ top, height: ROW_H, transition: "top .6s cubic-bezier(.4,0,.2,1)" }}
     >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold">{row.label}</span>
-        <span className="text-[.7rem] font-bold" style={{ color: row.color }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="flex items-center gap-2 text-xs font-bold">
+          <span className="text-sm leading-none">{MEDALS[rank] ?? "🏅"}</span>
+          <span className="text-base leading-none">{ICONS[row.id]}</span>
+          {row.label}
+        </span>
+        <span
+          className="text-[.68rem] font-extrabold px-2.5 py-0.5 rounded-full text-white"
+          style={{ background: "var(--grad)", boxShadow: "0 2px 10px rgba(236,26,114,.35)" }}
+        >
           {row.faixaLabel}
         </span>
       </div>
-      <div className="relative h-5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.06)" }}>
+      <div className="relative h-7 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.05)", boxShadow: "inset 0 1px 3px rgba(0,0,0,.4)" }}>
         {/* linhas de grade das 6 faixas */}
         {FAIXA_GRID_FRACOES.map((f, i) => (
           <div
             key={i}
-            className="absolute top-0 bottom-0 w-px"
-            style={{ left: `${f * 100}%`, background: "rgba(255,255,255,.14)" }}
+            className="absolute top-0 bottom-0 w-px z-10"
+            style={{ left: `${f * 100}%`, background: "rgba(255,255,255,.10)" }}
           />
         ))}
-        {/* barra "lançado" (trilha clara) */}
+        {/* trilha "lançado" — mesma rampa rosa→roxo, bem mais clara (meter track) */}
         <div
           className="absolute inset-y-0 left-0 rounded-full"
-          style={{ width: `${widthLancado}%`, background: row.color, opacity: 0.28, transition: "width .6s ease" }}
+          style={{ width: `${widthLancado}%`, background: "var(--grad)", opacity: 0.22, transition: "width .7s cubic-bezier(.4,0,.2,1)" }}
         />
-        {/* barra "ativado" (cor cheia) */}
+        {/* preenchimento "ativado" — rampa cheia com brilho */}
         <div
           className="absolute inset-y-0 left-0 rounded-full"
-          style={{ width: `${widthAtivado}%`, background: row.color, transition: "width .6s ease" }}
-        />
+          style={{
+            width: `${widthAtivado}%`,
+            background: "var(--grad)",
+            transition: "width .7s cubic-bezier(.4,0,.2,1)",
+            boxShadow: widthAtivado > 0 ? "0 0 14px rgba(236,26,114,.55)" : "none",
+          }}
+        >
+          {/* brilho superior (gloss), reforça o efeito "criado por IA" sem tirar contraste do texto */}
+          <div
+            className="absolute inset-x-0 top-0 h-1/2 rounded-t-full"
+            style={{ background: "linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0))" }}
+          />
+        </div>
+        {widthAtivado > 12 && (
+          <span className="absolute inset-y-0 flex items-center text-[.65rem] font-extrabold text-white z-10" style={{ right: `${100 - widthAtivado}%`, transform: "translateX(6px)" }}>
+            {valorTxt(row.ativado)}
+          </span>
+        )}
       </div>
-      <div className="flex items-center justify-between mt-1">
+      <div className="flex items-center justify-between mt-1.5">
         <span className="text-[.68rem] text-ink-dim">
           {valorTxt(row.ativado)} ativado{row.unidade === "pts" ? "s" : ""} de {valorTxt(row.lancado)} lançado{row.unidade === "pts" ? "s" : ""}
         </span>
         {alemDoTeto && (
-          <span className="text-[.65rem] font-bold" style={{ color: row.color }}>
-            além da Faixa 6
+          <span className="text-[.65rem] font-extrabold" style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
+            🚀 além da Faixa 6
           </span>
         )}
       </div>
@@ -165,17 +190,33 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
     return fb - fa;
   });
   const topOf: Record<string, number> = {};
-  ranked.forEach((r, i) => (topOf[r.id] = i * ROW_H));
+  const rankOf: Record<string, number> = {};
+  ranked.forEach((r, i) => {
+    topOf[r.id] = i * ROW_H;
+    rankOf[r.id] = i;
+  });
 
   return (
     <div>
-      <h3 className="text-sm font-bold text-ink-dim uppercase tracking-wide mb-3">
-        Pontos por frente (barra clara = lançado · barra cheia = ativado — ordenado pela frente mais avançada)
-      </h3>
-      <div className="card p-4">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+        <h3 className="text-sm font-bold text-ink-dim uppercase tracking-wide">
+          Pontos por frente — ordenado pela mais avançada
+        </h3>
+        <div className="flex items-center gap-4 text-[.68rem] text-ink-dim">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full" style={{ background: "var(--grad)" }} />
+            Ativado
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full" style={{ background: "var(--grad)", opacity: 0.28 }} />
+            Lançado
+          </span>
+        </div>
+      </div>
+      <div className="card p-5">
         <div className="relative" style={{ height: rows.length * ROW_H }}>
           {rows.map((row) => (
-            <BarraLinha key={row.id} row={row} top={topOf[row.id]} />
+            <BarraLinha key={row.id} row={row} top={topOf[row.id]} rank={rankOf[row.id]} />
           ))}
         </div>
         <div className="relative mt-1 h-4">
