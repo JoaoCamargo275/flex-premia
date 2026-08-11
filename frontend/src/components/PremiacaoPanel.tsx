@@ -1,4 +1,3 @@
-import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { fmtBRL, fmtNum } from "../lib/format";
 import type { ResultadoPremiacao, PainelColaborador, FaixaTables, FaixaRow, AparelhoBonusRow } from "../lib/premiacao-types";
 
@@ -31,111 +30,169 @@ function bonusAparelhoAtual(rows: AparelhoBonusRow[], valor: number): AparelhoBo
   return atual ?? { faixa: 0, valor: 0, mult: 0 };
 }
 
-function Donut({
-  ativado,
-  lancado,
-  color,
-  centerTop,
-  centerSub,
-}: {
-  ativado: number;
-  lancado: number;
+const ROW_H = 86; // altura de cada linha da corrida de barras, em px
+// As 6 faixas de MV, ALTAS, FB/AVA e Aparelhos (determinante) usam a mesma
+// progressão relativa de meta (60/80/100/120/150/200%), então convertida
+// para fração da Faixa 6 de cada frente, as posições das linhas de grade
+// caem sempre nos mesmos pontos — por isso dá pra desenhar um único eixo X.
+const FAIXA_GRID_FRACOES = [0.3, 0.4, 0.5, 0.6, 0.75, 1.0];
+
+interface BarraFrente {
+  id: string;
+  label: string;
   color: string;
-  centerTop: string;
-  centerSub: string;
-}) {
-  const restante = Math.max(0, lancado - ativado);
-  const vazio = ativado <= 0 && restante <= 0;
-  const data = vazio ? [{ name: "vazio", value: 1 }] : [{ name: "ativado", value: ativado }, { name: "restante", value: restante }];
+  lancado: number;
+  ativado: number;
+  scaleMax: number;
+  unidade: "pts" | "reais";
+  faixaLabel: string;
+}
+
+function BarraLinha({ row, top }: { row: BarraFrente; top: number }) {
+  const fracAtivado = row.scaleMax > 0 ? row.ativado / row.scaleMax : 0;
+  const fracLancado = row.scaleMax > 0 ? row.lancado / row.scaleMax : 0;
+  const widthAtivado = Math.max(0, Math.min(100, fracAtivado * 100));
+  const widthLancado = Math.max(0, Math.min(100, fracLancado * 100));
+  const alemDoTeto = fracAtivado > 1;
+  const valorTxt = (n: number) => (row.unidade === "reais" ? fmtBRL(n) : `${fmtNum(n)} pts`);
 
   return (
-    <div className="relative w-full max-w-[150px] mx-auto aspect-square">
-      <ResponsiveContainer width="100%" height="100%">
-        <PieChart>
-          <Pie
-            data={data}
-            dataKey="value"
-            innerRadius="72%"
-            outerRadius="100%"
-            startAngle={90}
-            endAngle={-270}
-            stroke="none"
-            isAnimationActive={false}
-          >
-            <Cell fill={vazio ? "rgba(255,255,255,.08)" : color} />
-            {!vazio && <Cell fill="rgba(255,255,255,.08)" />}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-2">
-        <div className="text-base font-extrabold leading-tight">{centerTop}</div>
-        <div className="text-[.62rem] text-ink-dim leading-tight mt-0.5">{centerSub}</div>
+    <div
+      className="absolute left-0 right-0"
+      style={{ top, height: ROW_H, transition: "top .6s cubic-bezier(.4,0,.2,1)" }}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-bold">{row.label}</span>
+        <span className="text-[.7rem] font-bold" style={{ color: row.color }}>
+          {row.faixaLabel}
+        </span>
+      </div>
+      <div className="relative h-5 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.06)" }}>
+        {/* linhas de grade das 6 faixas */}
+        {FAIXA_GRID_FRACOES.map((f, i) => (
+          <div
+            key={i}
+            className="absolute top-0 bottom-0 w-px"
+            style={{ left: `${f * 100}%`, background: "rgba(255,255,255,.14)" }}
+          />
+        ))}
+        {/* barra "lançado" (trilha clara) */}
+        <div
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${widthLancado}%`, background: row.color, opacity: 0.28, transition: "width .6s ease" }}
+        />
+        {/* barra "ativado" (cor cheia) */}
+        <div
+          className="absolute inset-y-0 left-0 rounded-full"
+          style={{ width: `${widthAtivado}%`, background: row.color, transition: "width .6s ease" }}
+        />
+      </div>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-[.68rem] text-ink-dim">
+          {valorTxt(row.ativado)} ativado{row.unidade === "pts" ? "s" : ""} de {valorTxt(row.lancado)} lançado{row.unidade === "pts" ? "s" : ""}
+        </span>
+        {alemDoTeto && (
+          <span className="text-[.65rem] font-bold" style={{ color: row.color }}>
+            além da Faixa 6
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-function IndicatorDonuts({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
+function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
   const fFbavaAtivado = faixaAlcancada(faixas.faixasFbava, painel.ativado.ptsFBAVA);
   const fFbavaLancado = faixaAlcancada(faixas.faixasFbava, painel.lancado.ptsFBAVA);
 
   // RENOV. MV, ALTAS e Aparelhos são determinantes: a faixa que efetivamente
-  // conta (e é paga) é sempre a mesma — a menor entre as três. Por isso os
-  // três anéis abaixo mostram painel.ativado.faixaDeterminante, e não a
-  // faixa que cada frente atingiria isoladamente. FB/AVA é bônus à parte e
-  // continua mostrando sua própria faixa.
+  // conta (e é paga) é sempre a mesma — a menor entre as três. FB/AVA é
+  // bônus à parte e mantém sua própria faixa.
   const faixaDet = painel.ativado.faixaDeterminante;
+
+  const mvMax = faixas.faixasMV[faixas.faixasMV.length - 1]?.pts ?? 1;
+  const fbavaMax = faixas.faixasFbava[faixas.faixasFbava.length - 1]?.pts ?? 1;
+  const altasMax = faixas.faixasAltas[faixas.faixasAltas.length - 1]?.pts ?? 1;
+  const aparelhosMax = faixas.aparelhoFaixas[faixas.aparelhoFaixas.length - 1]?.valor ?? 1;
+
+  const rows: BarraFrente[] = [
+    {
+      id: "mv",
+      label: "RENOV. MV",
+      color: COLORS.mv,
+      lancado: painel.lancado.ptsMV,
+      ativado: painel.ativado.ptsMV,
+      scaleMax: mvMax,
+      unidade: "pts",
+      faixaLabel: `Faixa ${faixaDet}`,
+    },
+    {
+      id: "fbava",
+      label: "RENOV. FB/AVA",
+      color: COLORS.fbava,
+      lancado: painel.lancado.ptsFBAVA,
+      ativado: painel.ativado.ptsFBAVA,
+      scaleMax: fbavaMax,
+      unidade: "pts",
+      faixaLabel: `Faixa ${fFbavaAtivado.faixa}`,
+    },
+    {
+      id: "altas",
+      label: "ALTAS",
+      color: COLORS.altas,
+      lancado: painel.lancado.ptsAltas,
+      ativado: painel.ativado.ptsAltas,
+      scaleMax: altasMax,
+      unidade: "pts",
+      faixaLabel: `Faixa ${faixaDet}`,
+    },
+    {
+      id: "aparelhos",
+      label: "Aparelhos",
+      color: COLORS.aparelhos,
+      lancado: painel.lancado.valorAparelhos,
+      ativado: painel.ativado.valorAparelhos,
+      scaleMax: aparelhosMax,
+      unidade: "reais",
+      faixaLabel: `Faixa ${faixaDet}`,
+    },
+  ];
+
+  // ranking pela fração já ativada da própria régua (comparação justa entre pontos e R$)
+  const ranked = [...rows].sort((a, b) => {
+    const fa = a.scaleMax > 0 ? a.ativado / a.scaleMax : 0;
+    const fb = b.scaleMax > 0 ? b.ativado / b.scaleMax : 0;
+    return fb - fa;
+  });
+  const topOf: Record<string, number> = {};
+  ranked.forEach((r, i) => (topOf[r.id] = i * ROW_H));
 
   return (
     <div>
       <h3 className="text-sm font-bold text-ink-dim uppercase tracking-wide mb-3">
-        Pontos por frente (ativado em cor · lançado no total do anel)
+        Pontos por frente (barra clara = lançado · barra cheia = ativado — ordenado pela frente mais avançada)
       </h3>
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="card p-4 flex flex-col gap-2 items-center">
-          <span className="text-xs font-bold">RENOV. MV</span>
-          <Donut
-            ativado={painel.ativado.ptsMV}
-            lancado={painel.lancado.ptsMV}
-            color={COLORS.mv}
-            centerTop={`Faixa ${faixaDet}`}
-            centerSub={`${fmtNum(painel.ativado.ptsMV)} / ${fmtNum(painel.lancado.ptsMV)} pts`}
-          />
+      <div className="card p-4">
+        <div className="relative" style={{ height: rows.length * ROW_H }}>
+          {rows.map((row) => (
+            <BarraLinha key={row.id} row={row} top={topOf[row.id]} />
+          ))}
         </div>
-        <div className="card p-4 flex flex-col gap-2 items-center">
-          <span className="text-xs font-bold">RENOV. FB/AVA</span>
-          <Donut
-            ativado={painel.ativado.ptsFBAVA}
-            lancado={painel.lancado.ptsFBAVA}
-            color={COLORS.fbava}
-            centerTop={`Faixa ${fFbavaAtivado.faixa}`}
-            centerSub={`${fmtNum(painel.ativado.ptsFBAVA)} / ${fmtNum(painel.lancado.ptsFBAVA)} pts`}
-          />
-        </div>
-        <div className="card p-4 flex flex-col gap-2 items-center">
-          <span className="text-xs font-bold">ALTAS</span>
-          <Donut
-            ativado={painel.ativado.ptsAltas}
-            lancado={painel.lancado.ptsAltas}
-            color={COLORS.altas}
-            centerTop={`Faixa ${faixaDet}`}
-            centerSub={`${fmtNum(painel.ativado.ptsAltas)} / ${fmtNum(painel.lancado.ptsAltas)} pts`}
-          />
-        </div>
-        <div className="card p-4 flex flex-col gap-2 items-center">
-          <span className="text-xs font-bold">Aparelhos</span>
-          <Donut
-            ativado={painel.ativado.valorAparelhos}
-            lancado={painel.lancado.valorAparelhos}
-            color={COLORS.aparelhos}
-            centerTop={`Faixa ${faixaDet}`}
-            centerSub={fmtBRL(painel.ativado.valorAparelhos)}
-          />
+        <div className="relative mt-1 h-4">
+          {FAIXA_GRID_FRACOES.map((f, i) => (
+            <span
+              key={i}
+              className="absolute text-[.6rem] text-ink-dim -translate-x-1/2"
+              style={{ left: `${f * 100}%` }}
+            >
+              Faixa {i + 1}
+            </span>
+          ))}
         </div>
       </div>
       <p className="text-xs text-ink-dim mt-2">
-        RENOV. MV, ALTAS e Aparelhos são determinantes: a faixa paga é sempre a <b>menor</b> entre as três (por isso os três anéis
-        mostram a mesma faixa). RENOV. FB/AVA é bônus à parte e mantém sua própria faixa.
+        RENOV. MV, ALTAS e Aparelhos são determinantes: a faixa paga é sempre a <b>menor</b> entre as três (por isso mostram a
+        mesma faixa). RENOV. FB/AVA é bônus à parte e mantém sua própria faixa.
       </p>
       {faixas.faixasFbava.length > 0 && fFbavaLancado.faixa !== fFbavaAtivado.faixa && (
         <p className="text-xs text-ink-dim mt-1">
@@ -404,7 +461,7 @@ export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColabor
         </div>
       )}
 
-      <IndicatorDonuts painel={painel} faixas={faixas} />
+      <FrenteBarRace painel={painel} faixas={faixas} />
 
       <div>
         <h3 className="text-sm font-bold text-ink-dim uppercase tracking-wide mb-2">Detalhamento — lançado (todas, exceto canceladas)</h3>
