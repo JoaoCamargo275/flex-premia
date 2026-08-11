@@ -6,10 +6,13 @@ export function AppShell({
   roleLabel,
   links,
   children,
+  headerExtra,
 }: {
   roleLabel: string;
   links: { href: string; label: string }[];
   children: ReactNode;
+  /** Conteúdo extra renderizado ao lado do badge de papel (ex.: seletor de mês do colaborador). */
+  headerExtra?: ReactNode;
 }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -47,6 +50,7 @@ export function AppShell({
             <span className="text-xs uppercase tracking-wide text-ink-dim ml-2 border border-line rounded-full px-2 py-0.5">
               {roleLabel}
             </span>
+            {headerExtra}
           </div>
           <nav className="flex items-center gap-1 overflow-x-auto">
             {links.map((l) => (

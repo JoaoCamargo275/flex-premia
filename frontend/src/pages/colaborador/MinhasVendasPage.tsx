@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "reac
 import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
 import { INDICATOR_LABELS } from "../../lib/types";
+import { useMonthFilter } from "../../lib/month-filter-context";
 import { SaleItemActions, SaleFooterActions } from "./SaleActions";
 
 interface SaleItem {
@@ -29,6 +30,7 @@ function maskCnpjDisplay(digits: string) {
 }
 
 export default function MinhasVendasPage() {
+  const { from, to, label, isMesAtual } = useMonthFilter();
   const [sales, setSales] = useState<Sale[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -49,12 +51,13 @@ export default function MinhasVendasPage() {
 
   const load = useCallback(() => {
     api
-      .get<Sale[]>("/api/sales")
+      .get<Sale[]>(`/api/sales?from=${from}&to=${to}`)
       .then(setSales)
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar vendas."));
-  }, []);
+  }, [from, to]);
 
   useEffect(() => {
+    setSales(null);
     load();
   }, [load]);
 
@@ -72,8 +75,10 @@ export default function MinhasVendasPage() {
       <div>
         <h1 className="text-xl font-bold">Minhas vendas</h1>
         <p className="text-sm text-ink-dim">
-          Cada produto tem seu próprio status e flag de <b>Ativo</b> — marque um produto como ativo assim
-          que ele for efetivamente ativado, só assim ele conta pontos para sua faixa e premiação.
+          Exibindo vendas de <b>{label}</b>
+          {isMesAtual && " (mês atual)"} — use o calendariozinho ao lado de "Colaborador", lá em cima, para ver
+          outros meses. Cada produto tem seu próprio status e flag de <b>Ativo</b> — marque um produto como
+          ativo assim que ele for efetivamente ativado, só assim ele conta pontos para sua faixa e premiação.
         </p>
       </div>
 

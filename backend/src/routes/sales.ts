@@ -4,6 +4,7 @@ import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware
 import { isValidCnpj, onlyDigits } from "../lib/cnpj";
 import type { Indicator } from "../lib/types";
 import { getPainelColaborador } from "../lib/aggregate";
+import { parsePeriod } from "../lib/period";
 
 export const salesRouter = Router();
 
@@ -38,14 +39,24 @@ const ALTAS_CATEGORY_PREFIX: Record<string, string> = {
   travel: "Travel",
 };
 
+// O colaborador registra as vendas mês a mês — o calendariozinho ao lado do
+// badge "COLABORADOR" (no topo) permite ver o painel e a lista de vendas de
+// um mês específico, filtrando por data de lançamento (createdAt).
 salesRouter.get("/painel", async (req: AuthedRequest, res) => {
-  const painel = await getPainelColaborador(req.user!.sub);
+  const period = parsePeriod(req.query);
+  const painel = await getPainelColaborador(req.user!.sub, period);
   res.json(painel);
 });
 
 salesRouter.get("/", async (req: AuthedRequest, res) => {
+  const period = parsePeriod(req.query);
   const sales = await prisma.sale.findMany({
-    where: { colaboradorId: req.user!.sub },
+    where: {
+      colaboradorId: req.user!.sub,
+      ...(period.from || period.to
+        ? { createdAt: { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) } }
+        : {}),
+    },
     include: { items: true },
     orderBy: { createdAt: "desc" },
   });
