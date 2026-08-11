@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { INDICATOR_LABELS } from "../../lib/types";
 import { fmtBRL, fmtNum } from "../../lib/format";
@@ -93,6 +93,12 @@ export default function SupervisorColaboradorDetailPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
+        <Link
+          to="/supervisor"
+          className="inline-flex items-center gap-1 text-xs font-semibold text-accent-2 hover:text-accent mb-2"
+        >
+          ← Voltar para visão geral da equipe
+        </Link>
         <h1 className="text-xl font-bold">{data.colaborador.name}</h1>
         <p className="text-sm text-ink-dim">{data.colaborador.email} · somente leitura</p>
       </div>
