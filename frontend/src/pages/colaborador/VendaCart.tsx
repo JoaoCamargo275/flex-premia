@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
@@ -70,6 +70,23 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
 ];
 
 function QtyInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  // Campo de texto (não type="number") controlado por uma string própria:
+  // inputs numéricos nativos têm um comportamento de seleção/cursor
+  // inconsistente entre navegadores que fazia dígitos serem perdidos ao
+  // digitar números com mais de um dígito (ex.: "50" virava "5"). Aqui a
+  // gente mesmo filtra os dígitos e só sincroniza com o número do pai.
+  const [text, setText] = useState(String(value));
+
+  useEffect(() => {
+    setText(String(value));
+  }, [value]);
+
+  function handleChange(raw: string) {
+    const digits = raw.replace(/\D/g, "");
+    setText(digits);
+    onChange(digits ? Math.max(0, parseInt(digits, 10)) : 0);
+  }
+
   return (
     <div className="flex items-center gap-1.5">
       <button
@@ -80,11 +97,13 @@ function QtyInput({ value, onChange }: { value: number; onChange: (v: number) =>
         −
       </button>
       <input
-        type="number"
-        min={0}
-        value={value}
-        onChange={(e) => onChange(Math.max(0, parseInt(e.target.value) || 0))}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={text}
+        onChange={(e) => handleChange(e.target.value)}
         onFocus={(e) => e.target.select()}
+        onBlur={() => setText(String(value))}
         className="w-12 text-center bg-transparent font-bold"
       />
       <button
