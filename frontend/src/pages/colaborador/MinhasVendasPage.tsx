@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from "react";
 import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
 import { INDICATOR_LABELS } from "../../lib/types";
@@ -33,6 +33,19 @@ export default function MinhasVendasPage() {
   const [error, setError] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  function copiarCnpj(e: MouseEvent, sale: Sale) {
+    e.stopPropagation();
+    const texto = maskCnpjDisplay(sale.clienteCnpj);
+    navigator.clipboard
+      .writeText(texto)
+      .then(() => {
+        setCopiedId(sale.id);
+        setTimeout(() => setCopiedId((cur) => (cur === sale.id ? null : cur)), 1500);
+      })
+      .catch(() => setError("Não foi possível copiar o CNPJ."));
+  }
 
   const load = useCallback(() => {
     api
@@ -94,10 +107,14 @@ export default function MinhasVendasPage() {
 
           return (
             <div key={sale.id} className={idx > 0 ? "border-t border-white/5" : undefined}>
-              <button
-                type="button"
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => setExpandedId(expanded ? null : sale.id)}
-                className="w-full flex flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-white/[.03] transition"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") setExpandedId(expanded ? null : sale.id);
+                }}
+                className="w-full flex flex-wrap items-center gap-3 px-4 py-3 text-left hover:bg-white/[.03] transition cursor-pointer"
               >
                 <span
                   className="w-2 h-2 rounded-full shrink-0"
@@ -107,8 +124,19 @@ export default function MinhasVendasPage() {
                 />
                 <div className="flex-1 min-w-0">
                   <div className="font-bold truncate">{sale.clienteNome}</div>
-                  <div className="text-xs text-ink-dim truncate">
-                    CNPJ {maskCnpjDisplay(sale.clienteCnpj)} · {new Date(sale.createdAt).toLocaleDateString("pt-BR")}
+                  <div className="text-xs text-ink-dim truncate flex items-center gap-1.5">
+                    <span>
+                      CNPJ {maskCnpjDisplay(sale.clienteCnpj)} · {new Date(sale.createdAt).toLocaleDateString("pt-BR")}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => copiarCnpj(e, sale)}
+                      className="shrink-0 text-[.7rem] font-bold px-1.5 py-0.5 rounded-md hover:bg-white/[.08] transition"
+                      style={{ color: copiedId === sale.id ? "var(--good, #22c55e)" : "var(--accent-2)" }}
+                      title="Copiar CNPJ"
+                    >
+                      {copiedId === sale.id ? "Copiado ✓" : "Copiar"}
+                    </button>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
@@ -136,7 +164,7 @@ export default function MinhasVendasPage() {
                     : "Pendente"}
                 </span>
                 <span className="text-ink-dim shrink-0">{expanded ? "▲" : "▼"}</span>
-              </button>
+              </div>
 
               {expanded && (
                 <div className="px-4 pb-4 flex flex-col gap-3">
