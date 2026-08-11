@@ -1,20 +1,16 @@
 export const ROLES = ["MASTER", "SUPERVISOR", "COLABORADOR"] as const;
 export type Role = (typeof ROLES)[number];
 
-export const SALE_STATUSES = [
-  "PENDENTE",
-  "EM_ANDAMENTO",
-  "ATIVADA",
-  "CANCELADA",
+// O status da venda é texto livre digitado pelo colaborador — esta lista é
+// só uma sugestão (datalist) para agilizar o preenchimento. O cancelamento
+// de uma venda é controlado à parte pelo campo "cancelado" (ver SaleActions).
+export const SALE_STATUS_SUGESTOES = [
+  "Pendente",
+  "Em aprovação",
+  "Em instalação",
+  "Ativada",
 ] as const;
-export type SaleStatus = (typeof SALE_STATUSES)[number];
-
-export const SALE_STATUS_LABELS: Record<SaleStatus, string> = {
-  PENDENTE: "Pendente",
-  EM_ANDAMENTO: "Em aprovação/instalação",
-  ATIVADA: "Ativada",
-  CANCELADA: "Cancelada",
-};
+export type SaleStatus = string;
 
 export const INDICATORS = [
   "RENOV_MV",

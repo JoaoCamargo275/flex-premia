@@ -30,6 +30,14 @@ interface CartItemInput {
   indicator: Indicator;
   label: string;
   quantity: number;
+  observacao?: string;
+}
+
+interface AparelhoLinha {
+  id: string;
+  nome: string;
+  valor: string;
+  observacao: string;
 }
 
 type Tab = "mv" | "fbava" | "altas" | "aparelhos";
@@ -73,7 +81,11 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("mv");
   const [qty, setQty] = useState<Record<string, number>>({});
-  const [aparelhoValor, setAparelhoValor] = useState<string>("");
+  const [altasBusca, setAltasBusca] = useState("");
+  const [aparelhoNome, setAparelhoNome] = useState("");
+  const [aparelhoValorInput, setAparelhoValorInput] = useState("");
+  const [aparelhoObs, setAparelhoObs] = useState("");
+  const [aparelhos, setAparelhos] = useState<AparelhoLinha[]>([]);
   const [clienteNome, setClienteNome] = useState("");
   const [clienteCnpj, setClienteCnpj] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -110,15 +122,40 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
     return rows;
   }, [qty, catalog]);
 
-  const aparelhoNum = parseFloat(aparelhoValor.replace(/\./g, "").replace(",", ".")) || 0;
+  const altasFilteredCount = useMemo(() => {
+    const q = altasBusca.trim().toLowerCase();
+    if (!q) return catalog.ALTAS.reduce((acc, cat) => acc + cat.items.length, 0);
+    return catalog.ALTAS.reduce(
+      (acc, cat) =>
+        acc + cat.items.filter((item) => item.label.toLowerCase().includes(q) || (cat.categoryName ?? "").toLowerCase().includes(q)).length,
+      0
+    );
+  }, [catalog, altasBusca]);
+
   const totalPontos = cartItems.reduce((acc, r) => acc + r.subtotal, 0);
+  const totalAparelhos = aparelhos.reduce((acc, a) => acc + (parseFloat(a.valor.replace(/\./g, "").replace(",", ".")) || 0), 0);
   const cnpjDigits = clienteCnpj.replace(/\D/g, "");
   const cnpjOk = cnpjDigits.length === 0 || isValidCnpj(cnpjDigits);
+
+  const aparelhoValorNum = parseFloat(aparelhoValorInput.replace(/\./g, "").replace(",", ".")) || 0;
+  function addAparelho() {
+    if (!aparelhoNome.trim() || aparelhoValorNum <= 0) return;
+    setAparelhos((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${prev.length}`, nome: aparelhoNome.trim(), valor: aparelhoValorInput, observacao: aparelhoObs.trim() },
+    ]);
+    setAparelhoNome("");
+    setAparelhoValorInput("");
+    setAparelhoObs("");
+  }
+  function removeAparelho(id: string) {
+    setAparelhos((prev) => prev.filter((a) => a.id !== id));
+  }
 
   const canSubmit =
     clienteNome.trim().length > 1 &&
     isValidCnpj(cnpjDigits) &&
-    (cartItems.length > 0 || aparelhoNum > 0) &&
+    (cartItems.length > 0 || aparelhos.length > 0) &&
     !pending;
 
   async function handleSubmit() {
@@ -129,8 +166,11 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
       label: r.label,
       quantity: r.qty,
     }));
-    if (aparelhoNum > 0) {
-      items.push({ indicator: "APARELHOS", label: "Valor vendido em aparelhos", quantity: aparelhoNum });
+    for (const a of aparelhos) {
+      const valor = parseFloat(a.valor.replace(/\./g, "").replace(",", ".")) || 0;
+      if (valor > 0) {
+        items.push({ indicator: "APARELHOS", label: a.nome, quantity: valor, observacao: a.observacao || undefined });
+      }
     }
 
     setPending(true);
@@ -179,35 +219,108 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
             </div>
           )}
           {tab === "altas" && (
-            <div className="flex flex-col gap-5 max-h-[60vh] overflow-y-auto pr-1">
-              {catalog.ALTAS.map((cat) => (
-                <ItemTable
-                  key={cat.categoryId}
-                  title={`${cat.categoryIcon ?? ""} ${cat.categoryName}`}
-                  items={cat.items}
-                  qty={qty}
-                  setQty={setQtyFor}
-                  withPrice
-                />
-              ))}
+            <div className="flex flex-col gap-4">
+              <input
+                type="text"
+                className="input"
+                placeholder="🔎 Buscar produto ou categoria..."
+                value={altasBusca}
+                onChange={(e) => setAltasBusca(e.target.value)}
+              />
+              <div className="flex flex-col gap-5 max-h-[60vh] overflow-y-auto pr-1">
+                {catalog.ALTAS.map((cat) => {
+                  const q = altasBusca.trim().toLowerCase();
+                  const items = q
+                    ? cat.items.filter(
+                        (item) => item.label.toLowerCase().includes(q) || (cat.categoryName ?? "").toLowerCase().includes(q)
+                      )
+                    : cat.items;
+                  if (q && items.length === 0) return null;
+                  return (
+                    <ItemTable
+                      key={cat.categoryId}
+                      title={`${cat.categoryIcon ?? ""} ${cat.categoryName}`}
+                      items={items}
+                      qty={qty}
+                      setQty={setQtyFor}
+                      withPrice
+                    />
+                  );
+                })}
+                {altasBusca.trim() && altasFilteredCount === 0 && (
+                  <p className="text-sm text-ink-dim">Nenhum produto encontrado para "{altasBusca}".</p>
+                )}
+              </div>
             </div>
           )}
           {tab === "aparelhos" && (
-            <div className="flex flex-col gap-3">
-              <label className="text-xs uppercase tracking-wide text-ink-dim">
-                Valor total vendido em aparelhos (R$)
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                className="input w-56 font-bold text-accent-2"
-                placeholder="0,00"
-                value={aparelhoValor}
-                onChange={(e) => setAparelhoValor(e.target.value)}
-              />
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:flex-wrap">
+                <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
+                  <label className="text-xs uppercase tracking-wide text-ink-dim">Aparelho vendido</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Ex.: iPhone 15, Galaxy A55..."
+                    value={aparelhoNome}
+                    onChange={(e) => setAparelhoNome(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1 w-40">
+                  <label className="text-xs uppercase tracking-wide text-ink-dim">Valor (R$)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    className="input font-bold text-accent-2"
+                    placeholder="0,00"
+                    value={aparelhoValorInput}
+                    onChange={(e) => setAparelhoValorInput(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
+                  <label className="text-xs uppercase tracking-wide text-ink-dim">Observação (opcional)</label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Ex.: cor, condição, parcelamento..."
+                    value={aparelhoObs}
+                    onChange={(e) => setAparelhoObs(e.target.value)}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={addAparelho}
+                  disabled={!aparelhoNome.trim() || aparelhoValorNum <= 0}
+                  className="btn-grad disabled:opacity-50 h-[42px]"
+                >
+                  + Adicionar
+                </button>
+              </div>
+
+              {aparelhos.length > 0 && (
+                <ul className="flex flex-col gap-2">
+                  {aparelhos.map((a) => (
+                    <li key={a.id} className="flex items-center justify-between gap-3 text-sm border-t border-white/5 pt-2">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{a.nome}</div>
+                        {a.observacao && <div className="text-xs text-ink-dim truncate">{a.observacao}</div>}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="font-bold text-accent-2">
+                          {fmtBRL(parseFloat(a.valor.replace(/\./g, "").replace(",", ".")) || 0)}
+                        </span>
+                        <button type="button" onClick={() => removeAparelho(a.id)} className="text-accent-3 text-xs font-bold">
+                          Remover
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
               <p className="text-xs text-ink-dim">
-                Este valor entra como um único item de venda em Aparelhos, com o bônus calculado
-                automaticamente.
+                Cada aparelho vendido entra como um item separado; o valor total soma para o bônus,
+                calculado automaticamente.
               </p>
             </div>
           )}
@@ -241,7 +354,7 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
 
         <div className="card p-4 flex flex-col gap-3">
           <h2 className="font-bold text-sm">Resumo do carrinho</h2>
-          {cartItems.length === 0 && aparelhoNum === 0 && (
+          {cartItems.length === 0 && aparelhos.length === 0 && (
             <p className="text-xs text-ink-dim">Nenhum item selecionado ainda.</p>
           )}
           <ul className="flex flex-col gap-2 max-h-64 overflow-y-auto">
@@ -253,16 +366,26 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
                 <span className="font-bold text-accent-2">{fmtNum(r.subtotal)} pts</span>
               </li>
             ))}
-            {aparelhoNum > 0 && (
-              <li className="flex justify-between text-sm">
-                <span>Aparelhos</span>
-                <span className="font-bold text-accent-2">{fmtBRL(aparelhoNum)}</span>
+            {aparelhos.map((a) => (
+              <li key={a.id} className="flex justify-between text-sm">
+                <span>{a.nome}</span>
+                <span className="font-bold text-accent-2">
+                  {fmtBRL(parseFloat(a.valor.replace(/\./g, "").replace(",", ".")) || 0)}
+                </span>
               </li>
-            )}
+            ))}
           </ul>
-          <div className="border-t border-line pt-2 flex justify-between text-sm font-bold">
-            <span>Total em pontos</span>
-            <span>{fmtNum(totalPontos)} pts</span>
+          <div className="border-t border-line pt-2 flex flex-col gap-1">
+            <div className="flex justify-between text-sm font-bold">
+              <span>Total em pontos</span>
+              <span>{fmtNum(totalPontos)} pts</span>
+            </div>
+            {totalAparelhos > 0 && (
+              <div className="flex justify-between text-sm font-bold text-accent-2">
+                <span>Total em aparelhos</span>
+                <span>{fmtBRL(totalAparelhos)}</span>
+              </div>
+            )}
           </div>
           {error && <p className="text-xs text-accent-3">{error}</p>}
           <button disabled={!canSubmit} onClick={handleSubmit} className="btn-grad disabled:opacity-50">

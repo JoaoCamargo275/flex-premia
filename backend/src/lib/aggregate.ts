@@ -37,7 +37,7 @@ async function sumPontosPorIndicador(
     where: {
       sale: {
         colaboradorId,
-        status: { not: "CANCELADA" },
+        cancelado: false,
         ...(onlyAtivo ? { ativo: true } : {}),
         ...(period.from || period.to
           ? {

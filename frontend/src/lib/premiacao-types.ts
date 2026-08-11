@@ -30,6 +30,35 @@ export interface PainelColaborador {
   ativado: ResultadoPremiacao;
 }
 
+export interface FaixaRow {
+  faixa: number;
+  pts: number;
+  valor: number;
+  aparelhos: number;
+  metaPct: string;
+  pctFinal: number | null;
+}
+
+export interface AparelhoFaixaRow {
+  faixa: number;
+  valor: number;
+  metaPct: string;
+}
+
+export interface AparelhoBonusRow {
+  faixa: number;
+  valor: number;
+  mult: number;
+}
+
+export interface FaixaTables {
+  faixasMV: FaixaRow[];
+  faixasFbava: FaixaRow[];
+  faixasAltas: FaixaRow[];
+  aparelhoFaixas: AparelhoFaixaRow[];
+  aparelhoBonus: AparelhoBonusRow[];
+}
+
 export interface MemberOverview {
   id: string;
   name: string;

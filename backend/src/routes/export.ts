@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware";
 import { parsePeriod } from "../lib/period";
-import { INDICATOR_LABELS, SALE_STATUS_LABELS } from "../lib/types";
+import { INDICATOR_LABELS } from "../lib/types";
 
 export const exportRouter = Router();
 
@@ -48,9 +48,11 @@ exportRouter.get("/team-csv", requireAuth, requireRole("SUPERVISOR", "MASTER"), 
     "Data",
     "Status",
     "Ativo",
+    "Cancelada",
     "Data de ativação",
     "Indicador",
     "Item",
+    "Observação do item",
     "Quantidade",
     "Pontos",
     "Valor (R$)",
@@ -65,11 +67,13 @@ exportRouter.get("/team-csv", requireAuth, requireRole("SUPERVISOR", "MASTER"), 
           sale.clienteNome,
           sale.clienteCnpj,
           sale.createdAt.toISOString(),
-          SALE_STATUS_LABELS[sale.status as keyof typeof SALE_STATUS_LABELS] ?? sale.status,
+          sale.status,
           sale.ativo ? "Sim" : "Não",
+          sale.cancelado ? "Sim" : "Não",
           sale.dataAtivacao ? sale.dataAtivacao.toISOString() : "",
           INDICATOR_LABELS[item.indicator as keyof typeof INDICATOR_LABELS] ?? item.indicator,
           item.label,
+          item.observacao ?? "",
           String(item.quantity),
           String(item.pointsTotal),
           item.valorReais != null ? String(item.valorReais) : "",

@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { PainelLancadoAtivado } from "../../components/PremiacaoPanel";
-import { INDICATOR_LABELS, SALE_STATUS_LABELS } from "../../lib/types";
+import { INDICATOR_LABELS } from "../../lib/types";
 import { fmtBRL } from "../../lib/format";
-import type { PainelColaborador } from "../../lib/premiacao-types";
+import type { PainelColaborador, FaixaTables } from "../../lib/premiacao-types";
 
 interface SaleItem {
   id: string;
@@ -30,18 +30,24 @@ interface DetailResponse {
 export default function MasterColaboradorDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<DetailResponse | null>(null);
+  const [faixas, setFaixas] = useState<FaixaTables | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    api
-      .get<DetailResponse>(`/api/master/colaboradores/${id}`)
-      .then(setData)
+    Promise.all([
+      api.get<DetailResponse>(`/api/master/colaboradores/${id}`),
+      api.get<FaixaTables>("/api/catalog/faixas"),
+    ])
+      .then(([d, f]) => {
+        setData(d);
+        setFaixas(f);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar colaborador."));
   }, [id]);
 
   if (error) return <p className="text-sm text-accent-3">{error}</p>;
-  if (!data) return null;
+  if (!data || !faixas) return null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -52,7 +58,7 @@ export default function MasterColaboradorDetailPage() {
         </p>
       </div>
 
-      <PainelLancadoAtivado painel={data.painel} />
+      <PainelLancadoAtivado painel={data.painel} faixas={faixas} />
 
       <div className="card p-4">
         <h2 className="text-sm font-bold mb-3">Histórico de vendas</h2>
@@ -66,7 +72,7 @@ export default function MasterColaboradorDetailPage() {
                   <span className="font-semibold">
                     {sale.clienteNome} {sale.ativo && <span className="text-good text-xs font-bold">✓ Ativo</span>}
                   </span>
-                  <span className="text-ink-dim text-xs">{SALE_STATUS_LABELS[sale.status as keyof typeof SALE_STATUS_LABELS]}</span>
+                  <span className="text-ink-dim text-xs">{sale.status}</span>
                 </div>
                 <div className="text-xs text-ink-dim">
                   {new Date(sale.createdAt).toLocaleDateString("pt-BR")} ·{" "}

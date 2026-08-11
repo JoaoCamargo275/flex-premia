@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware";
 import { isValidCnpj, onlyDigits } from "../lib/cnpj";
-import { SALE_STATUSES, type Indicator, type SaleStatus } from "../lib/types";
+import type { Indicator } from "../lib/types";
 import { getPainelColaborador } from "../lib/aggregate";
 
 export const salesRouter = Router();
@@ -14,6 +14,7 @@ interface CartItemInput {
   indicator: Indicator;
   label: string;
   quantity: number;
+  observacao?: string;
 }
 
 salesRouter.get("/painel", async (req: AuthedRequest, res) => {
@@ -51,14 +52,17 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
     const itemsData = input.items.map((item) => {
       if (item.indicator === "APARELHOS") {
         const valor = Number(item.quantity) || 0;
-        if (valor <= 0) throw new Error("Informe um valor válido para Aparelhos.");
+        if (valor <= 0) throw new Error("Informe um valor válido para o aparelho.");
+        const nomeAparelho = (item.label || "").trim();
+        if (!nomeAparelho) throw new Error("Informe o aparelho vendido.");
         return {
           indicator: "APARELHOS",
-          label: "Valor vendido em aparelhos",
+          label: nomeAparelho,
           quantity: 1,
           pointsUnit: 0,
           pointsTotal: 0,
           valorReais: valor,
+          observacao: item.observacao?.trim() || null,
         };
       }
       const qty = Number(item.quantity) || 0;
@@ -81,10 +85,10 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
         colaboradorId: user.sub,
         clienteNome,
         clienteCnpj,
-        status: "PENDENTE",
+        status: "Pendente",
         items: { create: itemsData },
         statusHistory: {
-          create: { statusAnterior: null, statusNovo: "PENDENTE", alteradoPorId: user.sub },
+          create: { statusAnterior: null, statusNovo: "Pendente", alteradoPorId: user.sub },
         },
       },
     });
@@ -95,11 +99,15 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
   }
 });
 
+// O status é texto livre digitado pelo colaborador (ex: "Aguardando instalação
+// dia 15", "Cliente confirmou"...) — não é mais um enum fechado. O
+// cancelamento de uma venda é feito à parte, em PATCH /:id/cancelado.
 salesRouter.patch("/:id/status", async (req: AuthedRequest, res) => {
   try {
     const user = req.user!;
-    const novoStatus = req.body?.status as SaleStatus;
-    if (!SALE_STATUSES.includes(novoStatus)) throw new Error("Status inválido.");
+    const novoStatus = String(req.body?.status ?? "").trim();
+    if (!novoStatus) throw new Error("Informe o status da venda.");
+    if (novoStatus.length > 160) throw new Error("Status muito longo (máx. 160 caracteres).");
 
     const sale = await prisma.sale.findUnique({ where: { id: (req.params.id as string) } });
     if (!sale || sale.colaboradorId !== user.sub) throw new Error("Venda não encontrada.");
@@ -107,10 +115,7 @@ salesRouter.patch("/:id/status", async (req: AuthedRequest, res) => {
     await prisma.$transaction([
       prisma.sale.update({
         where: { id: (req.params.id as string) },
-        data: {
-          status: novoStatus,
-          ...(novoStatus !== "ATIVADA" ? { ativo: false, dataAtivacao: null } : {}),
-        },
+        data: { status: novoStatus },
       }),
       prisma.saleStatusHistory.create({
         data: {
@@ -135,19 +140,12 @@ salesRouter.patch("/:id/ativo", async (req: AuthedRequest, res) => {
 
     const sale = await prisma.sale.findUnique({ where: { id: (req.params.id as string) } });
     if (!sale || sale.colaboradorId !== user.sub) throw new Error("Venda não encontrada.");
-    if (sale.status === "CANCELADA") throw new Error("Venda cancelada não pode ser ativada.");
+    if (sale.cancelado) throw new Error("Venda cancelada não pode ser ativada.");
 
-    const novoStatus = ativo ? "ATIVADA" : sale.status === "ATIVADA" ? "EM_ANDAMENTO" : sale.status;
-
-    await prisma.$transaction([
-      prisma.sale.update({
-        where: { id: (req.params.id as string) },
-        data: { ativo, dataAtivacao: ativo ? new Date() : null, status: novoStatus },
-      }),
-      prisma.saleStatusHistory.create({
-        data: { saleId: (req.params.id as string), statusAnterior: sale.status, statusNovo: novoStatus, alteradoPorId: user.sub },
-      }),
-    ]);
+    await prisma.sale.update({
+      where: { id: (req.params.id as string) },
+      data: { ativo, dataAtivacao: ativo ? new Date() : null },
+    });
 
     res.json({ ok: true });
   } catch (e) {
@@ -155,13 +153,41 @@ salesRouter.patch("/:id/ativo", async (req: AuthedRequest, res) => {
   }
 });
 
-// Decisão de projeto: só é permitido excluir vendas ainda PENDENTES.
+// Cancelar/reabrir uma venda — controlado à parte do texto de status, para
+// que os pontos parem de contar (via aggregate.ts: cancelado=false na soma)
+// independentemente do que o colaborador tenha escrito no campo de status.
+salesRouter.patch("/:id/cancelado", async (req: AuthedRequest, res) => {
+  try {
+    const user = req.user!;
+    const cancelado = Boolean(req.body?.cancelado);
+
+    const sale = await prisma.sale.findUnique({ where: { id: (req.params.id as string) } });
+    if (!sale || sale.colaboradorId !== user.sub) throw new Error("Venda não encontrada.");
+
+    await prisma.sale.update({
+      where: { id: (req.params.id as string) },
+      data: {
+        cancelado,
+        ...(cancelado ? { ativo: false, dataAtivacao: null } : {}),
+      },
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao atualizar venda." });
+  }
+});
+
+// Decisão de projeto: só é permitido excluir vendas ainda no estado inicial
+// (status "Pendente" — o texto padrão de criação — e não ativas/canceladas).
 salesRouter.delete("/:id", async (req: AuthedRequest, res) => {
   try {
     const user = req.user!;
     const sale = await prisma.sale.findUnique({ where: { id: (req.params.id as string) } });
     if (!sale || sale.colaboradorId !== user.sub) throw new Error("Venda não encontrada.");
-    if (sale.status !== "PENDENTE") throw new Error("Só é possível excluir vendas ainda pendentes.");
+    if (sale.ativo || sale.cancelado || sale.status.trim().toLowerCase() !== "pendente") {
+      throw new Error("Só é possível excluir vendas ainda pendentes (status inicial, não ativas nem canceladas).");
+    }
 
     await prisma.sale.delete({ where: { id: (req.params.id as string) } });
     res.json({ ok: true });

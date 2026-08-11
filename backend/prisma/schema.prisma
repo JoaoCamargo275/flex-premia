@@ -16,7 +16,8 @@ datasource db {
 // validamos os valores na camada de aplicação (ver src/lib/types.ts).
 // Valores válidos:
 //   Role: MASTER | SUPERVISOR | COLABORADOR
-//   SaleStatus: PENDENTE | EM_ANDAMENTO | ATIVADA | CANCELADA
+//   Sale.status: texto livre digitado pelo colaborador (ex: "Pendente", "Em instalação"...)
+//     — o cancelamento é controlado à parte pelo campo Sale.cancelado (boolean).
 //   Indicator: RENOV_MV | RENOV_FB | RENOV_AVA_DADOS | RENOV_AVA_VOZ | ALTAS | APARELHOS
 
 model Team {
@@ -107,8 +108,9 @@ model Sale {
   clienteNome  String
   clienteCnpj  String
 
-  status       String     @default("PENDENTE")
+  status       String     @default("Pendente")
   ativo        Boolean    @default(false)
+  cancelado    Boolean    @default(false)
   dataAtivacao DateTime?
   observacao   String?
 
@@ -127,11 +129,12 @@ model SaleItem {
   indicator     String
   catalogItemId String?
   catalogItem   CatalogItem? @relation(fields: [catalogItemId], references: [id])
-  label         String
+  label         String       // para Aparelhos, é o nome/modelo do aparelho vendido
   quantity      Float        // para Aparelhos, é o valor em R$ vendido (quantity=1, pointsUnit=0, valorReais=valor)
   pointsUnit    Int          // pontos unitários congelados no momento da venda
   pointsTotal   Int          // quantity * pointsUnit (0 para Aparelhos)
   valorReais    Float?       // usado apenas para itens de Aparelhos (valor vendido)
+  observacao    String?      // observação livre sobre o item (usado principalmente em Aparelhos)
 }
 
 model SaleStatusHistory {

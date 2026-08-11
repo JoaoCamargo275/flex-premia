@@ -37,7 +37,7 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
 
   const where = {
     colaboradorId: { in: userIds },
-    status: { not: "CANCELADA" },
+    cancelado: false,
     ...(period.from || period.to
       ? { createdAt: { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) } }
       : {}),
@@ -79,7 +79,7 @@ async function getMonthlyEvolution(userIds: string[]): Promise<MonthlyPoint[]> {
   since.setHours(0, 0, 0, 0);
 
   const sales = await prisma.sale.findMany({
-    where: { colaboradorId: { in: userIds }, status: { not: "CANCELADA" }, createdAt: { gte: since } },
+    where: { colaboradorId: { in: userIds }, cancelado: false, createdAt: { gte: since } },
     select: { createdAt: true, ativo: true },
   });
 
