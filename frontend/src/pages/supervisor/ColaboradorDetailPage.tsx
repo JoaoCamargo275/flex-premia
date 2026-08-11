@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../lib/api";
-import { PainelLancadoAtivado } from "../../components/PremiacaoPanel";
-import { ProdutosPorFrenteCard } from "../../components/ProdutosPorFrenteCard";
 import { INDICATOR_LABELS } from "../../lib/types";
-import { fmtBRL } from "../../lib/format";
-import type { PainelColaborador, FaixaTables, ProdutosPorFrente } from "../../lib/premiacao-types";
+import { fmtBRL, fmtNum } from "../../lib/format";
+import type { PainelColaborador } from "../../lib/premiacao-types";
 
 interface SaleItem {
   id: string;
   indicator: string;
   label: string;
+  quantity: number;
   pointsTotal: number;
   valorReais: number | null;
   status: string;
@@ -26,31 +25,39 @@ interface Sale {
 interface DetailResponse {
   colaborador: { id: string; name: string; email: string };
   painel: PainelColaborador;
-  produtos: ProdutosPorFrente;
   sales: Sale[];
+}
+
+function PontosCard({ label, value, color }: { label: string; value: number; color?: string }) {
+  return (
+    <div className="card p-4">
+      <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">{label}</div>
+      <div className="text-xl font-extrabold" style={color ? { color } : undefined}>
+        {fmtNum(value)} pts
+      </div>
+    </div>
+  );
 }
 
 export default function SupervisorColaboradorDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<DetailResponse | null>(null);
-  const [faixas, setFaixas] = useState<FaixaTables | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([
-      api.get<DetailResponse>(`/api/supervisor/colaboradores/${id}`),
-      api.get<FaixaTables>("/api/catalog/faixas"),
-    ])
-      .then(([d, f]) => {
-        setData(d);
-        setFaixas(f);
-      })
+    api
+      .get<DetailResponse>(`/api/supervisor/colaboradores/${id}`)
+      .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar colaborador."));
   }, [id]);
 
   if (error) return <p className="text-sm text-accent-3">{error}</p>;
-  if (!data || !faixas) return null;
+  if (!data) return null;
+
+  const { painel } = data;
+  const pontosLancados = painel.lancado.ptsMV + painel.lancado.ptsFBAVA + painel.lancado.ptsAltas;
+  const pontosAtivados = painel.ativado.ptsMV + painel.ativado.ptsFBAVA + painel.ativado.ptsAltas;
 
   return (
     <div className="flex flex-col gap-6">
@@ -59,16 +66,23 @@ export default function SupervisorColaboradorDetailPage() {
         <p className="text-sm text-ink-dim">{data.colaborador.email} · somente leitura</p>
       </div>
 
-      <PainelLancadoAtivado painel={data.painel} faixas={faixas} />
-
-      <ProdutosPorFrenteCard produtos={data.produtos} />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <PontosCard label="Pontos lançados" value={pontosLancados} />
+        <PontosCard label="Pontos ativados" value={pontosAtivados} color="var(--good, #22c55e)" />
+        <div className="card p-4">
+          <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">💰 Aparelhos lançado</div>
+          <div className="text-xl font-extrabold">{fmtBRL(painel.lancado.valorAparelhos)}</div>
+        </div>
+        <div className="card p-4">
+          <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">💰 Aparelhos ativado</div>
+          <div className="text-xl font-extrabold text-good">{fmtBRL(painel.ativado.valorAparelhos)}</div>
+        </div>
+      </div>
 
       <div className="card p-4">
-        <h2 className="text-sm font-bold mb-3">Histórico de vendas</h2>
+        <h2 className="text-sm font-bold mb-3">Clientes e produtos vendidos</h2>
         <div className="flex flex-col gap-3">
           {data.sales.map((sale) => {
-            const pontos = sale.items.reduce((acc, i) => acc + i.pointsTotal, 0);
-            const valorAparelhos = sale.items.reduce((acc, i) => acc + (i.valorReais ?? 0), 0);
             const itensAtivos = sale.items.filter((i) => i.ativo).length;
             return (
               <div key={sale.id} className="border-b border-white/5 pb-3 last:border-0">
@@ -85,19 +99,24 @@ export default function SupervisorColaboradorDetailPage() {
                       )
                     )}
                   </span>
+                  <span className="text-xs text-ink-dim">{new Date(sale.createdAt).toLocaleDateString("pt-BR")}</span>
                 </div>
-                <ul className="text-xs text-ink-dim flex flex-col gap-0.5 mt-1">
+                <ul className="text-xs text-ink-dim flex flex-col gap-0.5 mt-1.5">
                   {sale.items.map((i) => (
-                    <li key={i.id}>
-                      {INDICATOR_LABELS[i.indicator as keyof typeof INDICATOR_LABELS]} {i.label} —{" "}
-                      <span className={i.ativo ? "text-good font-semibold" : ""}>{i.ativo ? "Ativo" : i.status}</span>
+                    <li key={i.id} className="flex items-center justify-between gap-2">
+                      <span>
+                        <span className="font-semibold text-ink">
+                          {INDICATOR_LABELS[i.indicator as keyof typeof INDICATOR_LABELS] ?? i.indicator}
+                        </span>{" "}
+                        — {i.label}
+                        {i.indicator === "APARELHOS" ? ` · ${fmtBRL(i.valorReais ?? 0)}` : ` x${fmtNum(i.quantity)} · ${i.pointsTotal} pts`}
+                      </span>
+                      <span className={i.ativo ? "text-good font-semibold shrink-0" : "shrink-0"}>
+                        {i.ativo ? "Ativo" : i.status}
+                      </span>
                     </li>
                   ))}
                 </ul>
-                <div className="text-xs text-ink-dim mt-1">{new Date(sale.createdAt).toLocaleDateString("pt-BR")}</div>
-                <div className="text-xs font-bold text-accent-2">
-                  {pontos > 0 && `${pontos} pts`} {valorAparelhos > 0 && fmtBRL(valorAparelhos)}
-                </div>
               </div>
             );
           })}
