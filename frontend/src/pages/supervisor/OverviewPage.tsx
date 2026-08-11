@@ -49,7 +49,7 @@ export default function SupervisorOverviewPage() {
           Sua equipe ainda não foi configurada. Peça a um Master para vincular sua equipe.
         </div>
       )}
-      {data && <TeamDashboard overview={data.overview} detailBasePath="/supervisor/colaboradores" />}
+      {data && <TeamDashboard overview={data.overview} detailBasePath="/supervisor/colaboradores" hidePremiacao />}
     </div>
   );
 }

@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { PainelLancadoAtivado } from "../../components/PremiacaoPanel";
+import { ProdutosPorFrenteCard } from "../../components/ProdutosPorFrenteCard";
 import { INDICATOR_LABELS } from "../../lib/types";
 import { fmtBRL } from "../../lib/format";
-import type { PainelColaborador, FaixaTables } from "../../lib/premiacao-types";
+import type { PainelColaborador, FaixaTables, ProdutosPorFrente } from "../../lib/premiacao-types";
 
 interface SaleItem {
   id: string;
@@ -25,6 +26,7 @@ interface Sale {
 interface DetailResponse {
   colaborador: { id: string; name: string; email: string };
   painel: PainelColaborador;
+  produtos: ProdutosPorFrente;
   sales: Sale[];
 }
 
@@ -58,6 +60,8 @@ export default function SupervisorColaboradorDetailPage() {
       </div>
 
       <PainelLancadoAtivado painel={data.painel} faixas={faixas} />
+
+      <ProdutosPorFrenteCard produtos={data.produtos} />
 
       <div className="card p-4">
         <h2 className="text-sm font-bold mb-3">Histórico de vendas</h2>

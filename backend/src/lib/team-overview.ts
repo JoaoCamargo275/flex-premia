@@ -1,6 +1,20 @@
 import { prisma } from "./prisma";
 import { getFaixaTables, getPainelColaborador, type PeriodFilter } from "./aggregate";
 
+// Quantidade lançada/ativada de uma frente para um colaborador — usada tanto
+// nos pontos (RENOV. MV/FB-AVA/ALTAS) quanto no valor em R$ de Aparelhos.
+export interface FrenteBreakdown {
+  lancado: number;
+  ativado: number;
+}
+
+export interface MemberFrentes {
+  mv: FrenteBreakdown;
+  fbava: FrenteBreakdown;
+  altas: FrenteBreakdown;
+  aparelhos: FrenteBreakdown; // valor em R$, não pontos
+}
+
 export interface MemberOverview {
   id: string;
   name: string;
@@ -8,6 +22,7 @@ export interface MemberOverview {
   premiacaoLancada: number;
   premiacaoAtivada: number;
   faixaAtivada: number;
+  frentes: MemberFrentes;
 }
 
 export interface KpiTotals {
@@ -15,6 +30,13 @@ export interface KpiTotals {
   vendasAtivadas: number;
   taxaConversao: number;
   premiacaoEstimada: number;
+  // Novos indicadores usados no painel do Supervisor (e disponíveis para o Master também):
+  pontosAtivos: number; // soma de pontos ativados (RENOV. MV + FB/AVA + ALTAS) de toda a equipe
+  taxaAtivacaoColaboradores: number; // % de colaboradores da equipe com ao menos 1 produto ativo no período
+  qtdProdutosMv: number;
+  qtdProdutosFbava: number;
+  qtdProdutosAltas: number;
+  qtdProdutosAparelhos: number;
 }
 
 export interface MonthlyPoint {
@@ -30,30 +52,99 @@ export interface TeamOverview {
   monthly: MonthlyPoint[];
 }
 
+function periodWhereClause(period: PeriodFilter) {
+  return period.from || period.to
+    ? { createdAt: { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) } }
+    : {};
+}
+
+async function getQuantidadesPorFrente(
+  userIds: string[],
+  period: PeriodFilter
+): Promise<{ mv: number; fbava: number; altas: number; aparelhos: number }> {
+  if (userIds.length === 0) return { mv: 0, fbava: 0, altas: 0, aparelhos: 0 };
+
+  const items = await prisma.saleItem.findMany({
+    where: {
+      sale: {
+        colaboradorId: { in: userIds },
+        cancelado: false,
+        ...periodWhereClause(period),
+      },
+    },
+    select: { indicator: true, quantity: true },
+  });
+
+  const acc = { mv: 0, fbava: 0, altas: 0, aparelhos: 0 };
+  for (const it of items) {
+    switch (it.indicator) {
+      case "RENOV_MV":
+        acc.mv += it.quantity;
+        break;
+      case "RENOV_FB":
+      case "RENOV_AVA_DADOS":
+      case "RENOV_AVA_VOZ":
+        acc.fbava += it.quantity;
+        break;
+      case "ALTAS":
+        acc.altas += it.quantity;
+        break;
+      case "APARELHOS":
+        acc.aparelhos += 1;
+        break;
+    }
+  }
+  return acc;
+}
+
+async function getTaxaAtivacaoColaboradores(userIds: string[], period: PeriodFilter): Promise<number> {
+  if (userIds.length === 0) return 0;
+  const ativos = await prisma.user.count({
+    where: {
+      id: { in: userIds },
+      sales: { some: { cancelado: false, items: { some: { ativo: true } }, ...periodWhereClause(period) } },
+    },
+  });
+  return (ativos / userIds.length) * 100;
+}
+
 async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<KpiTotals> {
   if (userIds.length === 0) {
-    return { vendasLancadas: 0, vendasAtivadas: 0, taxaConversao: 0, premiacaoEstimada: 0 };
+    return {
+      vendasLancadas: 0,
+      vendasAtivadas: 0,
+      taxaConversao: 0,
+      premiacaoEstimada: 0,
+      pontosAtivos: 0,
+      taxaAtivacaoColaboradores: 0,
+      qtdProdutosMv: 0,
+      qtdProdutosFbava: 0,
+      qtdProdutosAltas: 0,
+      qtdProdutosAparelhos: 0,
+    };
   }
 
   const where = {
     colaboradorId: { in: userIds },
     cancelado: false,
-    ...(period.from || period.to
-      ? { createdAt: { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) } }
-      : {}),
+    ...periodWhereClause(period),
   };
 
   // "Venda ativada" aqui = venda com pelo menos um produto já ativo (a
   // ativação em si é controlada por produto, ver SaleItem.ativo).
-  const [vendasLancadas, vendasAtivadas] = await Promise.all([
+  const [vendasLancadas, vendasAtivadas, quantidades, taxaAtivacaoColaboradores] = await Promise.all([
     prisma.sale.count({ where }),
     prisma.sale.count({ where: { ...where, items: { some: { ativo: true } } } }),
+    getQuantidadesPorFrente(userIds, period),
+    getTaxaAtivacaoColaboradores(userIds, period),
   ]);
 
   let premiacaoEstimada = 0;
+  let pontosAtivos = 0;
   for (const userId of userIds) {
     const painel = await getPainelColaborador(userId, period);
     premiacaoEstimada += painel.ativado.premiacaoFinal;
+    pontosAtivos += painel.ativado.ptsMV + painel.ativado.ptsFBAVA + painel.ativado.ptsAltas;
   }
 
   return {
@@ -61,6 +152,12 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
     vendasAtivadas,
     taxaConversao: vendasLancadas > 0 ? (vendasAtivadas / vendasLancadas) * 100 : 0,
     premiacaoEstimada,
+    pontosAtivos,
+    taxaAtivacaoColaboradores,
+    qtdProdutosMv: quantidades.mv,
+    qtdProdutosFbava: quantidades.fbava,
+    qtdProdutosAltas: quantidades.altas,
+    qtdProdutosAparelhos: quantidades.aparelhos,
   };
 }
 
@@ -122,6 +219,12 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
       premiacaoLancada: painel.lancado.premiacaoFinal,
       premiacaoAtivada: painel.ativado.premiacaoFinal,
       faixaAtivada: painel.ativado.faixaDeterminante,
+      frentes: {
+        mv: { lancado: painel.lancado.ptsMV, ativado: painel.ativado.ptsMV },
+        fbava: { lancado: painel.lancado.ptsFBAVA, ativado: painel.ativado.ptsFBAVA },
+        altas: { lancado: painel.lancado.ptsAltas, ativado: painel.ativado.ptsAltas },
+        aparelhos: { lancado: painel.lancado.valorAparelhos, ativado: painel.ativado.valorAparelhos },
+      },
     });
   }
 

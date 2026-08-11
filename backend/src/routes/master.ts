@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware";
 import { getTeamOverview } from "../lib/team-overview";
-import { getPainelColaborador } from "../lib/aggregate";
+import { getPainelColaborador, getProdutosPorFrente } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 import type { Role } from "../lib/types";
 
@@ -32,7 +32,10 @@ masterRouter.get("/colaboradores/:id", async (req: AuthedRequest, res) => {
     return;
   }
 
-  const painel = await getPainelColaborador(colaborador.id);
+  const [painel, produtos] = await Promise.all([
+    getPainelColaborador(colaborador.id),
+    getProdutosPorFrente(colaborador.id),
+  ]);
   const sales = await prisma.sale.findMany({
     where: { colaboradorId: colaborador.id },
     include: { items: true },
@@ -48,6 +51,7 @@ masterRouter.get("/colaboradores/:id", async (req: AuthedRequest, res) => {
       teamName: colaborador.team?.name ?? null,
     },
     painel,
+    produtos,
     sales,
   });
 });
