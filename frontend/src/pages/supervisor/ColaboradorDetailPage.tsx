@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { INDICATOR_LABELS } from "../../lib/types";
@@ -18,6 +18,7 @@ interface SaleItem {
 interface Sale {
   id: string;
   clienteNome: string;
+  clienteCnpj: string;
   cancelado: boolean;
   createdAt: string;
   items: SaleItem[];
@@ -26,6 +27,10 @@ interface DetailResponse {
   colaborador: { id: string; name: string; email: string };
   painel: PainelColaborador;
   sales: Sale[];
+}
+
+function maskCnpjDisplay(digits: string) {
+  return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
 }
 
 // Cada frente tem sua própria régua de faixas, então somar os pontos das 3
@@ -60,6 +65,8 @@ export default function SupervisorColaboradorDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<DetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -68,6 +75,15 @@ export default function SupervisorColaboradorDetailPage() {
       .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar colaborador."));
   }, [id]);
+
+  const vendasFiltradas = useMemo(() => {
+    if (!data) return [];
+    const q = busca.trim().toLowerCase();
+    if (!q) return data.sales;
+    return data.sales.filter(
+      (s) => s.clienteNome.toLowerCase().includes(q) || s.clienteCnpj.includes(q.replace(/\D/g, "") || q)
+    );
+  }, [data, busca]);
 
   if (error) return <p className="text-sm text-accent-3">{error}</p>;
   if (!data) return null;
@@ -95,47 +111,100 @@ export default function SupervisorColaboradorDetailPage() {
       </div>
 
       <div className="card p-4">
-        <h2 className="text-sm font-bold mb-3">Clientes e produtos vendidos</h2>
-        <div className="flex flex-col gap-3">
-          {data.sales.map((sale) => {
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h2 className="text-sm font-bold">Clientes e produtos vendidos</h2>
+          {data.sales.length > 0 && (
+            <input
+              className="input py-1.5 text-sm max-w-xs"
+              placeholder="Buscar por cliente ou CNPJ..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          )}
+        </div>
+
+        <div className="flex flex-col">
+          {vendasFiltradas.map((sale, idx) => {
             const itensAtivos = sale.items.filter((i) => i.ativo).length;
+            const expanded = expandedId === sale.id;
             return (
-              <div key={sale.id} className="border-b border-white/5 pb-3 last:border-0">
-                <div className="flex justify-between text-sm">
-                  <span className="font-semibold">
-                    {sale.clienteNome}{" "}
-                    {sale.cancelado ? (
-                      <span className="text-accent-3 text-xs font-bold">Cancelada</span>
-                    ) : (
-                      itensAtivos > 0 && (
-                        <span className="text-good text-xs font-bold">
-                          ✓ {itensAtivos}/{sale.items.length} ativos
-                        </span>
-                      )
-                    )}
+              <div key={sale.id} className={idx > 0 ? "border-t border-white/5" : undefined}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setExpandedId(expanded ? null : sale.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") setExpandedId(expanded ? null : sale.id);
+                  }}
+                  className="w-full flex flex-wrap items-center gap-3 py-3 text-left hover:bg-white/[.03] transition cursor-pointer"
+                >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{
+                      background: sale.cancelado
+                        ? "var(--accent-3)"
+                        : itensAtivos > 0
+                        ? "var(--good, #22c55e)"
+                        : "var(--ink-dim)",
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-sm truncate">{sale.clienteNome}</div>
+                    <div className="text-xs text-ink-dim truncate">
+                      CNPJ {maskCnpjDisplay(sale.clienteCnpj)} · {new Date(sale.createdAt).toLocaleDateString("pt-BR")} ·{" "}
+                      {sale.items.length} {sale.items.length === 1 ? "produto" : "produtos"}
+                    </div>
+                  </div>
+                  <span
+                    className="text-[.65rem] font-bold px-2 py-1 rounded-full shrink-0"
+                    style={
+                      sale.cancelado
+                        ? { background: "rgba(255,77,109,.14)", color: "var(--accent-3)" }
+                        : itensAtivos === sale.items.length
+                        ? { background: "rgba(34,197,94,.14)", color: "var(--good, #22c55e)" }
+                        : itensAtivos > 0
+                        ? { background: "rgba(236,26,114,.14)", color: "var(--accent)" }
+                        : { background: "rgba(255,255,255,.06)", color: "var(--ink-dim)" }
+                    }
+                  >
+                    {sale.cancelado
+                      ? "Cancelada"
+                      : itensAtivos === sale.items.length
+                      ? "Todos ativos"
+                      : itensAtivos > 0
+                      ? `${itensAtivos}/${sale.items.length} ativos`
+                      : "Pendente"}
                   </span>
-                  <span className="text-xs text-ink-dim">{new Date(sale.createdAt).toLocaleDateString("pt-BR")}</span>
+                  <span className="text-ink-dim shrink-0">{expanded ? "▲" : "▼"}</span>
                 </div>
-                <ul className="text-xs text-ink-dim flex flex-col gap-0.5 mt-1.5">
-                  {sale.items.map((i) => (
-                    <li key={i.id} className="flex items-center justify-between gap-2">
-                      <span>
-                        <span className="font-semibold text-ink">
-                          {INDICATOR_LABELS[i.indicator as keyof typeof INDICATOR_LABELS] ?? i.indicator}
-                        </span>{" "}
-                        — {i.label}
-                        {i.indicator === "APARELHOS" ? ` · ${fmtBRL(i.valorReais ?? 0)}` : ` x${fmtNum(i.quantity)} · ${i.pointsTotal} pts`}
-                      </span>
-                      <span className={i.ativo ? "text-good font-semibold shrink-0" : "shrink-0"}>
-                        {i.ativo ? "Ativo" : i.status}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+
+                {expanded && (
+                  <ul className="text-xs text-ink-dim flex flex-col gap-1 pb-3">
+                    {sale.items.map((i) => (
+                      <li key={i.id} className="flex items-center justify-between gap-2 rounded-lg bg-white/[.02] px-2.5 py-1.5">
+                        <span>
+                          <span className="font-semibold text-ink">
+                            {INDICATOR_LABELS[i.indicator as keyof typeof INDICATOR_LABELS] ?? i.indicator}
+                          </span>{" "}
+                          — {i.label}
+                          {i.indicator === "APARELHOS"
+                            ? ` · ${fmtBRL(i.valorReais ?? 0)}`
+                            : ` x${fmtNum(i.quantity)} · ${i.pointsTotal} pts`}
+                        </span>
+                        <span className={i.ativo ? "text-good font-semibold shrink-0" : "shrink-0"}>
+                          {i.ativo ? "Ativo" : i.status}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             );
           })}
-          {data.sales.length === 0 && <p className="text-sm text-ink-dim">Nenhuma venda registrada.</p>}
+          {data.sales.length === 0 && <p className="text-sm text-ink-dim py-2">Nenhuma venda registrada.</p>}
+          {data.sales.length > 0 && vendasFiltradas.length === 0 && (
+            <p className="text-sm text-ink-dim py-2">Nenhum cliente encontrado para essa busca.</p>
+          )}
         </div>
       </div>
     </div>
