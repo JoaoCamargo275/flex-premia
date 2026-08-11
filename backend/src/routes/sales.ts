@@ -17,6 +17,27 @@ interface CartItemInput {
   observacao?: string;
 }
 
+// Dentro de ALTAS existem várias categorias com planos de nome parecido
+// (ex.: "400MB" aparece tanto em Internet Fixa quanto poderia se confundir
+// com outros). Prefixamos o rótulo salvo com a categoria para não perder
+// essa informação depois, nas telas de acompanhamento.
+const ALTAS_CATEGORY_PREFIX: Record<string, string> = {
+  movel: "Móvel",
+  movelportin: "Portin",
+  fixa: "FB",
+  dados: "Dados",
+  tv: "TV",
+  fixo: "Fixo",
+  sip: "SIP",
+  vvn: "VVN",
+  ms365: "MS365",
+  gworkspace: "Google WS",
+  antivirus: "Antivírus",
+  mdm: "MDM",
+  valesaude: "Vale Saúde",
+  travel: "Travel",
+};
+
 salesRouter.get("/painel", async (req: AuthedRequest, res) => {
   const painel = await getPainelColaborador(req.user!.sub);
   res.json(painel);
@@ -70,10 +91,15 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
       if (qty <= 0) throw new Error(`Quantidade inválida para ${item.label}.`);
       const catalogItem = item.catalogItemId ? catalogMap.get(item.catalogItemId) : undefined;
       const pointsUnit = catalogItem ? catalogItem.points : 0;
+      let label = catalogItem ? catalogItem.label : item.label;
+      if (item.indicator === "ALTAS" && catalogItem?.categoryId) {
+        const prefixo = ALTAS_CATEGORY_PREFIX[catalogItem.categoryId];
+        if (prefixo) label = `${prefixo} ${label}`;
+      }
       return {
         indicator: item.indicator,
         catalogItemId: item.catalogItemId,
-        label: catalogItem ? catalogItem.label : item.label,
+        label,
         quantity: qty,
         pointsUnit,
         pointsTotal: Math.round(qty * pointsUnit),

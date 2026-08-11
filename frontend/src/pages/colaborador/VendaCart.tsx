@@ -42,6 +42,26 @@ interface AparelhoLinha {
 
 type Tab = "mv" | "fbava" | "altas" | "aparelhos";
 
+// Mesmo mapeamento usado no backend (ver ALTAS_CATEGORY_PREFIX em
+// backend/src/routes/sales.ts) — só para o resumo do carrinho já mostrar o
+// rótulo igual ao que será de fato salvo.
+const ALTAS_CATEGORY_PREFIX: Record<string, string> = {
+  movel: "Móvel",
+  movelportin: "Portin",
+  fixa: "FB",
+  dados: "Dados",
+  tv: "TV",
+  fixo: "Fixo",
+  sip: "SIP",
+  vvn: "VVN",
+  ms365: "MS365",
+  gworkspace: "Google WS",
+  antivirus: "Antivírus",
+  mdm: "MDM",
+  valesaude: "Vale Saúde",
+  travel: "Travel",
+};
+
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "mv", label: "RENOV. MV", emoji: "📱" },
   { id: "fbava", label: "RENOV. FB/AVA", emoji: "🔄" },
@@ -97,7 +117,7 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
   const cartItems = useMemo(() => {
     const rows: { key: string; catalogItemId: string; indicator: Indicator; label: string; qty: number; points: number; subtotal: number }[] = [];
 
-    const pushGroup = (indicator: Indicator, items: CatalogItemRow[]) => {
+    const pushGroup = (indicator: Indicator, items: CatalogItemRow[], labelPrefix?: string) => {
       for (const item of items) {
         const q = qty[item.id] || 0;
         if (q > 0) {
@@ -105,7 +125,7 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
             key: item.id,
             catalogItemId: item.id,
             indicator,
-            label: item.label,
+            label: labelPrefix ? `${labelPrefix} ${item.label}` : item.label,
             qty: q,
             points: item.points,
             subtotal: q * item.points,
@@ -118,7 +138,10 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
     pushGroup("RENOV_FB", catalog.RENOV_FB);
     pushGroup("RENOV_AVA_DADOS", catalog.RENOV_AVA_DADOS);
     pushGroup("RENOV_AVA_VOZ", catalog.RENOV_AVA_VOZ);
-    for (const cat of catalog.ALTAS) pushGroup("ALTAS", cat.items);
+    // O rótulo ganha o prefixo da categoria (ex.: "FB 400MB") para não se
+    // perder depois no acompanhamento — mesma regra aplicada no backend
+    // quando a venda é de fato salva (ver ALTAS_CATEGORY_PREFIX em sales.ts).
+    for (const cat of catalog.ALTAS) pushGroup("ALTAS", cat.items, cat.categoryId ? ALTAS_CATEGORY_PREFIX[cat.categoryId] : undefined);
 
     return rows;
   }, [qty, catalog]);
