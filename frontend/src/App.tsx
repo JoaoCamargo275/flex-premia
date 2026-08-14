@@ -2,6 +2,7 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./lib/auth-context";
 import { ProtectedRoute, ROLE_HOME } from "./components/ProtectedRoute";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 
 import ColaboradorLayout from "./pages/colaborador/ColaboradorLayout";
 import MeuPainelPage from "./pages/colaborador/MeuPainelPage";
@@ -32,6 +33,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/esqueci-minha-senha" element={<ForgotPasswordPage />} />
 
           <Route element={<ProtectedRoute allowedRoles={["COLABORADOR"]} />}>
             <Route element={<ColaboradorLayout />}>

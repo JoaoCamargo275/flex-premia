@@ -9,6 +9,7 @@ export interface UserRow {
   active: boolean;
   teamId: string | null;
   teamName: string | null;
+  passwordResetRequested: boolean;
 }
 
 const ROLE_LABELS: Record<UserRow["role"], string> = {
@@ -27,11 +28,24 @@ export function UsersTable({
   onChanged: () => void;
 }) {
   const [pending, setPending] = useState(false);
+  const [novaSenhaPorUsuario, setNovaSenhaPorUsuario] = useState<Record<string, string>>({});
 
   async function run(fn: () => Promise<unknown>) {
     setPending(true);
     try {
       await fn();
+      onChanged();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function resetarSenha(userId: string) {
+    if (!confirm("Gerar uma nova senha temporária para este usuário? A senha atual dele deixará de funcionar.")) return;
+    setPending(true);
+    try {
+      const resp = await api.post<{ ok: boolean; novaSenha: string }>(`/api/master/usuarios/${userId}/resetar-senha`, {});
+      setNovaSenhaPorUsuario((prev) => ({ ...prev, [userId]: resp.novaSenha }));
       onChanged();
     } finally {
       setPending(false);
@@ -56,7 +70,18 @@ export function UsersTable({
             {users.map((u) => (
               <tr key={u.id} className="border-t border-white/5">
                 <td className="py-2">
-                  <div className="font-semibold">{u.name}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold">{u.name}</span>
+                    {u.passwordResetRequested && (
+                      <span
+                        className="text-[.62rem] font-bold px-1.5 py-0.5 rounded-full shrink-0"
+                        style={{ background: "rgba(236,26,114,.14)", color: "var(--accent)" }}
+                        title="Pediu redefinição de senha na tela de login"
+                      >
+                        Esqueceu a senha
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-ink-dim">{u.email}</div>
                 </td>
                 <td className="py-2">{ROLE_LABELS[u.role]}</td>
@@ -83,13 +108,36 @@ export function UsersTable({
                   <span className={u.active ? "text-good" : "text-accent-3"}>{u.active ? "Ativo" : "Desativado"}</span>
                 </td>
                 <td className="py-2 text-right">
-                  <button
-                    disabled={pending}
-                    onClick={() => run(() => api.patch(`/api/master/usuarios/${u.id}`, { active: !u.active }))}
-                    className="text-xs font-semibold text-accent-2"
-                  >
-                    {u.active ? "Desativar" : "Reativar"}
-                  </button>
+                  {novaSenhaPorUsuario[u.id] ? (
+                    <div className="flex items-center justify-end gap-2 text-xs">
+                      <span className="text-ink-dim">Nova senha:</span>
+                      <code className="px-1.5 py-0.5 rounded bg-white/[.06] font-bold text-good">{novaSenhaPorUsuario[u.id]}</code>
+                      <button
+                        type="button"
+                        onClick={() => navigator.clipboard.writeText(novaSenhaPorUsuario[u.id]).catch(() => {})}
+                        className="text-accent-2 font-semibold hover:underline"
+                      >
+                        Copiar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        disabled={pending}
+                        onClick={() => resetarSenha(u.id)}
+                        className="text-xs font-bold text-accent-2 hover:underline"
+                      >
+                        Resetar senha
+                      </button>
+                      <button
+                        disabled={pending}
+                        onClick={() => run(() => api.patch(`/api/master/usuarios/${u.id}`, { active: !u.active }))}
+                        className="text-xs font-semibold text-accent-2"
+                      >
+                        {u.active ? "Desativar" : "Reativar"}
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

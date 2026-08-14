@@ -54,3 +54,29 @@ authRouter.post("/login", async (req, res) => {
 authRouter.get("/me", requireAuth, (req: AuthedRequest, res) => {
   res.json({ user: req.user });
 });
+
+// Não há envio de e-mail configurado no sistema — o "esqueci minha senha"
+// só registra o pedido pra que o Supervisor/Master vejam no painel deles e
+// resetem a senha manualmente, passando a nova senha temporária por fora.
+// Resposta é sempre genérica (não revela se o e-mail existe ou não).
+authRouter.post("/solicitar-reset-senha", async (req, res) => {
+  const email = String(req.body?.email || "")
+    .trim()
+    .toLowerCase();
+
+  if (email) {
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (user && user.active) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { passwordResetRequested: true, passwordResetRequestedAt: new Date() },
+      });
+    }
+  }
+
+  res.json({
+    ok: true,
+    message:
+      "Se esse e-mail estiver cadastrado, seu Supervisor (ou o Master, se você for Supervisor) foi avisado e vai te passar uma nova senha em breve.",
+  });
+});

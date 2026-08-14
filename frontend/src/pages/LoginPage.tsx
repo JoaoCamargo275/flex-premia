@@ -9,6 +9,7 @@ export default function LoginPage() {
   const location = useLocation() as { state?: { from?: string } };
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -71,18 +72,50 @@ export default function LoginPage() {
             />
           </div>
           <div className="flex flex-col gap-1">
-            <label htmlFor="password" className="text-xs uppercase tracking-wide text-ink-dim">
-              Senha
-            </label>
-            <input
-              id="password"
-              type="password"
-              required
-              className="input"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="flex items-center justify-between">
+              <label htmlFor="password" className="text-xs uppercase tracking-wide text-ink-dim">
+                Senha
+              </label>
+              <button
+                type="button"
+                onClick={() => navigate("/esqueci-minha-senha")}
+                className="text-xs font-semibold text-accent-2 hover:text-accent"
+                tabIndex={-1}
+              >
+                Esqueceu a senha?
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                id="password"
+                type={mostrarSenha ? "text" : "password"}
+                required
+                className="input pr-10"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarSenha((v) => !v)}
+                className="absolute right-0 top-0 h-full px-3 flex items-center text-ink-dim hover:text-ink"
+                aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                title={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                tabIndex={-1}
+              >
+                {mostrarSenha ? (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.94 10.94 0 0 1 12 19c-5 0-9.27-3.11-11-7.5a11.6 11.6 0 0 1 2.94-4.19M9.9 4.24A10.9 10.9 0 0 1 12 4c5 0 9.27 3.11 11 7.5a11.6 11.6 0 0 1-1.66 2.87M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-7.5 11-7.5S23 12 23 12s-4 7.5-11 7.5S1 12 1 12z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
           {error && <p className="text-sm text-accent-3">{error}</p>}
           <button type="submit" disabled={pending} className="btn-grad mt-2 disabled:opacity-60">

@@ -5,6 +5,7 @@ import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware
 import { getTeamOverview, getEvolutionSeries } from "../lib/team-overview";
 import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
+import { gerarSenhaTemporaria } from "../lib/temp-password";
 
 export const supervisorRouter = Router();
 
@@ -62,8 +63,40 @@ supervisorRouter.get("/colaboradores", async (req: AuthedRequest, res) => {
   });
   res.json({
     team: team ? { id: team.id, name: team.name } : null,
-    colaboradores: team?.members.map((m) => ({ id: m.id, name: m.name, email: m.email })) ?? [],
+    colaboradores:
+      team?.members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        passwordResetRequested: m.passwordResetRequested,
+      })) ?? [],
   });
+});
+
+// Reseta a senha de um colaborador da própria equipe — usado quando a
+// pessoa esqueceu a senha (pediu na tela de login) ou pede diretamente pro
+// Supervisor. Devolve a senha temporária UMA vez, pro Supervisor repassar
+// por fora (WhatsApp, presencial etc.) — ela não fica salva em texto puro.
+supervisorRouter.post("/colaboradores/:id/resetar-senha", async (req: AuthedRequest, res) => {
+  try {
+    const team = await prisma.team.findUnique({ where: { supervisorId: req.user!.sub } });
+    const colaborador = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+    if (!team || !colaborador || colaborador.teamId !== team.id) {
+      res.status(404).json({ error: "Colaborador não encontrado." });
+      return;
+    }
+
+    const novaSenha = gerarSenhaTemporaria();
+    const passwordHash = await bcrypt.hash(novaSenha, 10);
+    await prisma.user.update({
+      where: { id: colaborador.id },
+      data: { passwordHash, mustChangePassword: true, passwordResetRequested: false, passwordResetRequestedAt: null },
+    });
+
+    res.json({ ok: true, novaSenha });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao resetar senha." });
+  }
 });
 
 supervisorRouter.post("/colaboradores", async (req: AuthedRequest, res) => {

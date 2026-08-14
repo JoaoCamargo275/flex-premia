@@ -5,6 +5,7 @@ import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware
 import { getTeamOverview } from "../lib/team-overview";
 import { getPainelColaborador, getProdutosPorFrente } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
+import { gerarSenhaTemporaria } from "../lib/temp-password";
 import type { Role } from "../lib/types";
 
 export const masterRouter = Router();
@@ -72,8 +73,33 @@ masterRouter.get("/usuarios", async (_req, res) => {
       active: u.active,
       teamId: u.teamId,
       teamName: u.team?.name ?? null,
+      passwordResetRequested: u.passwordResetRequested,
     })),
   });
+});
+
+// Reseta a senha de qualquer usuário (Master também pode resetar Supervisor,
+// não só Colaborador) — mesmo mecanismo do Supervisor: gera uma senha
+// temporária, devolve ela uma vez só, e obriga a troca no próximo login.
+masterRouter.post("/usuarios/:id/resetar-senha", async (req: AuthedRequest, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+    if (!user) {
+      res.status(404).json({ error: "Usuário não encontrado." });
+      return;
+    }
+
+    const novaSenha = gerarSenhaTemporaria();
+    const passwordHash = await bcrypt.hash(novaSenha, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, mustChangePassword: true, passwordResetRequested: false, passwordResetRequestedAt: null },
+    });
+
+    res.json({ ok: true, novaSenha });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao resetar senha." });
+  }
 });
 
 masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {

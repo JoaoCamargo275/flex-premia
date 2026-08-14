@@ -40,6 +40,12 @@ model User {
   active       Boolean  @default(true)
   mustChangePassword Boolean @default(false)
 
+  // Pedido de "esqueci minha senha" feito na tela de login — fica visível
+  // pro Supervisor/Master resetarem a senha da pessoa (não há envio de
+  // e-mail configurado no sistema, então a redefinição é manual).
+  passwordResetRequested   Boolean   @default(false)
+  passwordResetRequestedAt DateTime?
+
   teamId       String?
   team         Team?    @relation("TeamMembers", fields: [teamId], references: [id])
   teamAsSupervisor Team? @relation("TeamSupervisor")
