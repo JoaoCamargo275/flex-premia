@@ -26,6 +26,26 @@ export default function MasterUsuariosPage() {
     load();
   }, [load]);
 
+  const [excluindoTeamId, setExcluindoTeamId] = useState<string | null>(null);
+
+  async function excluirEquipe(team: Team) {
+    if (
+      !confirm(
+        `Excluir a equipe "${team.name}"? Os colaboradores que estão nela não serão apagados, só ficarão sem equipe.`
+      )
+    )
+      return;
+    setExcluindoTeamId(team.id);
+    try {
+      await api.delete(`/api/master/equipes/${team.id}`);
+      load();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao excluir equipe.");
+    } finally {
+      setExcluindoTeamId(null);
+    }
+  }
+
   if (!data) return null;
 
   const supervisorsWithoutTeam = data.users.filter(
@@ -50,9 +70,19 @@ export default function MasterUsuariosPage() {
         <h2 className="text-sm font-bold mb-3">Equipes</h2>
         <ul className="flex flex-col gap-2 text-sm">
           {data.teams.map((t) => (
-            <li key={t.id} className="flex justify-between border-b border-white/5 pb-2 last:border-0">
+            <li key={t.id} className="flex items-center justify-between gap-3 border-b border-white/5 pb-2 last:border-0">
               <span>{t.name}</span>
-              <span className="text-ink-dim">{t.supervisorName ?? "sem supervisor"}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-ink-dim">{t.supervisorName ?? "sem supervisor"}</span>
+                <button
+                  type="button"
+                  disabled={excluindoTeamId === t.id}
+                  onClick={() => excluirEquipe(t)}
+                  className="text-xs font-bold text-accent-3 hover:underline"
+                >
+                  Excluir
+                </button>
+              </div>
             </li>
           ))}
           {data.teams.length === 0 && <li className="text-ink-dim">Nenhuma equipe criada ainda.</li>}

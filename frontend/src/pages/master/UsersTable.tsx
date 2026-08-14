@@ -52,6 +52,26 @@ export function UsersTable({
     }
   }
 
+  async function excluirUsuario(u: UserRow) {
+    if (
+      !confirm(
+        `Excluir "${u.name}" (${ROLE_LABELS[u.role]})? Isso apaga a conta permanentemente${
+          u.role === "COLABORADOR" ? ", junto com todas as vendas registradas por ele" : ""
+        }. Não tem como desfazer.`
+      )
+    )
+      return;
+    setPending(true);
+    try {
+      await api.delete(`/api/master/usuarios/${u.id}`);
+      onChanged();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao excluir usuário.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div className="card p-4">
       <h2 className="text-sm font-bold mb-3">Todos os usuários</h2>
@@ -135,6 +155,13 @@ export function UsersTable({
                         className="text-xs font-semibold text-accent-2"
                       >
                         {u.active ? "Desativar" : "Reativar"}
+                      </button>
+                      <button
+                        disabled={pending}
+                        onClick={() => excluirUsuario(u)}
+                        className="text-xs font-bold text-accent-3 hover:underline"
+                      >
+                        Excluir
                       </button>
                     </div>
                   )}

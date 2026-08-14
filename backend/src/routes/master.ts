@@ -154,6 +154,36 @@ masterRouter.patch("/usuarios/:id", async (req: AuthedRequest, res) => {
   }
 });
 
+// Exclui um usuário (Master, Supervisor ou Colaborador) permanentemente —
+// usado principalmente pra limpar contas de teste. Antes de apagar a linha,
+// desfaz tudo que aponta pra esse usuário e teria uma FK obrigatória: some
+// com o histórico de status que ele mudou, com as faltas ligadas a ele, some
+// com o vínculo de "criado por" nos usuários que ele criou, desvincula a
+// equipe da qual ele é supervisor, e apaga as vendas dele (se for
+// colaborador — os itens de cada venda vão junto, por cascade do schema).
+masterRouter.delete("/usuarios/:id", async (req: AuthedRequest, res) => {
+  try {
+    const id = req.params.id as string;
+    if (id === req.user!.sub) throw new Error("Você não pode excluir a própria conta.");
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new Error("Usuário não encontrado.");
+
+    await prisma.$transaction([
+      prisma.saleItemStatusHistory.deleteMany({ where: { alteradoPorId: id } }),
+      prisma.attendanceFlag.deleteMany({ where: { OR: [{ userId: id }, { setById: id }] } }),
+      prisma.user.updateMany({ where: { createdById: id }, data: { createdById: null } }),
+      prisma.team.updateMany({ where: { supervisorId: id }, data: { supervisorId: null } }),
+      prisma.sale.deleteMany({ where: { colaboradorId: id } }),
+      prisma.user.delete({ where: { id } }),
+    ]);
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao excluir usuário." });
+  }
+});
+
 masterRouter.post("/equipes", async (req: AuthedRequest, res) => {
   try {
     const { name, supervisorId } = req.body as { name: string; supervisorId?: string | null };
@@ -161,6 +191,26 @@ masterRouter.post("/equipes", async (req: AuthedRequest, res) => {
     res.status(201).json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao criar equipe." });
+  }
+});
+
+// Exclui uma equipe — os colaboradores que estavam nela não são apagados,
+// só ficam sem equipe (teamId = null), pra decidir depois se realoca ou
+// exclui cada um.
+masterRouter.delete("/equipes/:id", async (req: AuthedRequest, res) => {
+  try {
+    const id = req.params.id as string;
+    const team = await prisma.team.findUnique({ where: { id } });
+    if (!team) throw new Error("Equipe não encontrada.");
+
+    await prisma.$transaction([
+      prisma.user.updateMany({ where: { teamId: id }, data: { teamId: null } }),
+      prisma.team.delete({ where: { id } }),
+    ]);
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao excluir equipe." });
   }
 });
 
