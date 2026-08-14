@@ -83,10 +83,10 @@ function PontosFrenteCard({
 // Cor consistente para os dois estados em todos os mini-gráficos por frente —
 // a identidade (Lançados/Ativados) é sempre a mesma cor, então a legenda
 // aparece só uma vez pra seção inteira.
-const COR_LANCADOS = "#8b3dff";
-const COR_ATIVADOS = "#22c55e";
+export const COR_LANCADOS = "#8b3dff";
+export const COR_ATIVADOS = "#22c55e";
 
-function FrenteEvolutionChart({
+export function FrenteEvolutionChart({
   title,
   icon,
   data,

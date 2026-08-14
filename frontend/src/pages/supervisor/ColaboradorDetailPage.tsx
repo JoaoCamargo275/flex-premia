@@ -1,9 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { api } from "../../lib/api";
 import { INDICATOR_LABELS } from "../../lib/types";
 import { fmtBRL, fmtNum } from "../../lib/format";
-import type { PainelColaborador } from "../../lib/premiacao-types";
+import type { EvolutionSeries, PainelColaborador } from "../../lib/premiacao-types";
+import { PeriodFilterForm } from "../../components/PeriodFilterForm";
+import { FrenteEvolutionChart, COR_LANCADOS, COR_ATIVADOS } from "../../components/TeamDashboard";
 
 interface SaleItem {
   id: string;
@@ -27,6 +29,7 @@ interface DetailResponse {
   colaborador: { id: string; name: string; email: string };
   painel: PainelColaborador;
   sales: Sale[];
+  evolution: EvolutionSeries;
 }
 
 function maskCnpjDisplay(digits: string) {
@@ -63,6 +66,7 @@ function FrenteCard({
 
 export default function SupervisorColaboradorDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const [data, setData] = useState<DetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -70,11 +74,12 @@ export default function SupervisorColaboradorDetailPage() {
 
   useEffect(() => {
     if (!id) return;
+    const qs = searchParams.toString();
     api
-      .get<DetailResponse>(`/api/supervisor/colaboradores/${id}`)
+      .get<DetailResponse>(`/api/supervisor/colaboradores/${id}${qs ? `?${qs}` : ""}`)
       .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar colaborador."));
-  }, [id]);
+  }, [id, searchParams]);
 
   const vendasFiltradas = useMemo(() => {
     if (!data) return [];
@@ -103,6 +108,8 @@ export default function SupervisorColaboradorDetailPage() {
         <p className="text-sm text-ink-dim">{data.colaborador.email} · somente leitura</p>
       </div>
 
+      <PeriodFilterForm />
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <FrenteCard icon="📱" label="RENOV. MV" lancado={painel.lancado.ptsMV} ativado={painel.ativado.ptsMV} />
         <FrenteCard icon="🔄" label="RENOV. FB/AVA" lancado={painel.lancado.ptsFBAVA} ativado={painel.ativado.ptsFBAVA} />
@@ -114,6 +121,55 @@ export default function SupervisorColaboradorDetailPage() {
           ativado={painel.ativado.valorAparelhos}
           isValor
         />
+      </div>
+
+      <div className="card p-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="text-sm font-bold">
+            Evolução no período {data.evolution.granularity === "day" ? "— dia a dia" : "— semana a semana"}
+          </h2>
+          <div className="flex items-center gap-4 text-xs text-ink-dim">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COR_LANCADOS }} />
+              Lançados
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COR_ATIVADOS }} />
+              Ativados
+            </span>
+          </div>
+        </div>
+        <p className="text-xs text-ink-dim mb-3">
+          O eixo acompanha o período selecionado no filtro acima — dia a dia (períodos de até 31 dias) ou semana a
+          semana (períodos mais longos).
+        </p>
+        {data.evolution.points.length === 0 ? (
+          <p className="text-sm text-ink-dim">Sem dados no período selecionado.</p>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4">
+            <FrenteEvolutionChart
+              title="RENOV MV"
+              icon="📱"
+              data={data.evolution.points.map((p) => ({ bucket: p.bucket, ...p.mv }))}
+            />
+            <FrenteEvolutionChart
+              title="RENOV FB/AVA"
+              icon="🔄"
+              data={data.evolution.points.map((p) => ({ bucket: p.bucket, ...p.fbava }))}
+            />
+            <FrenteEvolutionChart
+              title="ALTAS"
+              icon="🚀"
+              data={data.evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas }))}
+            />
+            <FrenteEvolutionChart
+              title="Aparelhos"
+              icon="💰"
+              data={data.evolution.points.map((p) => ({ bucket: p.bucket, ...p.aparelhos }))}
+              isValor
+            />
+          </div>
+        )}
       </div>
 
       <div className="card p-4">

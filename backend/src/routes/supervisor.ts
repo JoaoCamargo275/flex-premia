@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware";
-import { getTeamOverview } from "../lib/team-overview";
+import { getTeamOverview, getEvolutionSeries } from "../lib/team-overview";
 import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 
@@ -30,18 +30,28 @@ supervisorRouter.get("/colaboradores/:id", async (req: AuthedRequest, res) => {
     return;
   }
 
-  const painel = await getPainelColaborador(colaborador.id);
-  const sales = await prisma.sale.findMany({
-    where: { colaboradorId: colaborador.id },
-    include: { items: true },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const period = parsePeriod(req.query);
+  const periodWhere =
+    period.from || period.to
+      ? { createdAt: { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) } }
+      : {};
+
+  const [painel, sales, evolution] = await Promise.all([
+    getPainelColaborador(colaborador.id, period),
+    prisma.sale.findMany({
+      where: { colaboradorId: colaborador.id, ...periodWhere },
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    getEvolutionSeries([colaborador.id], period),
+  ]);
 
   res.json({
     colaborador: { id: colaborador.id, name: colaborador.name, email: colaborador.email },
     painel,
     sales,
+    evolution,
   });
 });
 

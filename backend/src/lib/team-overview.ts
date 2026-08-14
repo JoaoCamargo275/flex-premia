@@ -226,7 +226,7 @@ function emptyFrenteSeriesValue(): FrenteSeriesValue {
 // curto (até 31 dias), mostra dia a dia; se for mais longo, agrupa em
 // blocos de 7 dias — assim o eixo X sempre acompanha o filtro de período
 // escolhido lá em cima, em vez de fixar sempre "últimos 6 meses".
-async function getEvolutionSeries(userIds: string[], period: PeriodFilter): Promise<EvolutionSeries> {
+export async function getEvolutionSeries(userIds: string[], period: PeriodFilter): Promise<EvolutionSeries> {
   if (userIds.length === 0) return { granularity: "day", points: [] };
 
   const now = new Date();
