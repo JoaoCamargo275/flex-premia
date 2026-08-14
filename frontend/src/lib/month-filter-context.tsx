@@ -43,6 +43,8 @@ export interface MonthFilterValue {
   isMesAtual: boolean;
   setMonth: (year: number, month: number) => void;
   irParaMesAtual: () => void;
+  /** Data (ISO, com hora) a usar ao registrar uma venda nova, para que ela caia dentro do mês selecionado. */
+  dataReferenciaVenda: () => string;
 }
 
 const MonthFilterContext = createContext<MonthFilterValue | null>(null);
@@ -78,6 +80,28 @@ export function MonthFilterProvider({ children }: { children: ReactNode }) {
     setMonth(hoje.getFullYear(), hoje.getMonth());
   }
 
+  // Ao registrar uma venda nova estando num mês diferente do atual, a data
+  // salva precisa cair dentro do mês selecionado (senão a venda não
+  // aparece depois quando o colaborador olhar aquele mês). Preserva o
+  // dia-do-mês e horário reais sempre que possível, só troca mês/ano.
+  function dataReferenciaVenda(): string {
+    const hoje = new Date();
+    if (hoje.getFullYear() === ym.year && hoje.getMonth() === ym.month) {
+      return hoje.toISOString();
+    }
+    const diasNoMes = new Date(ym.year, ym.month + 1, 0).getDate();
+    const dia = Math.min(hoje.getDate(), diasNoMes);
+    const data = new Date(
+      ym.year,
+      ym.month,
+      dia,
+      hoje.getHours(),
+      hoje.getMinutes(),
+      hoje.getSeconds()
+    );
+    return data.toISOString();
+  }
+
   const value = useMemo<MonthFilterValue>(() => {
     const hoje = new Date();
     return {
@@ -89,7 +113,9 @@ export function MonthFilterProvider({ children }: { children: ReactNode }) {
       isMesAtual: hoje.getFullYear() === ym.year && hoje.getMonth() === ym.month,
       setMonth,
       irParaMesAtual,
+      dataReferenciaVenda,
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ym]);
 
   return <MonthFilterContext.Provider value={value}>{children}</MonthFilterContext.Provider>;

@@ -1,13 +1,20 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR" translate="no">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- O Google Tradutor (ativado automaticamente em alguns navegadores)
+         reescreve nós de texto da página, o que confunde o React (estado
+         perde sincronia com o DOM) e troca rótulos como "UP"/"Down" e nomes
+         de mês por traduções erradas (ex.: "Até" virava "COMEU"). Essas duas
+         tags pedem ao navegador para nunca oferecer/tentar traduzir esta
+         página. -->
+    <meta name="google" content="notranslate" />
     <title>flexpremia-frontend</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root" class="notranslate" translate="no"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

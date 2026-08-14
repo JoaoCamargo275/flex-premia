@@ -66,7 +66,13 @@ salesRouter.get("/", async (req: AuthedRequest, res) => {
 salesRouter.post("/", async (req: AuthedRequest, res) => {
   try {
     const user = req.user!;
-    const input = req.body as { clienteNome: string; clienteCnpj: string; observacao?: string; items: CartItemInput[] };
+    const input = req.body as {
+      clienteNome: string;
+      clienteCnpj: string;
+      observacao?: string;
+      items: CartItemInput[];
+      dataVenda?: string;
+    };
 
     const clienteNome = (input.clienteNome || "").trim();
     const clienteCnpj = onlyDigits(input.clienteCnpj || "");
@@ -74,6 +80,17 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
     if (!clienteNome) throw new Error("Informe o nome do cliente.");
     if (!isValidCnpj(clienteCnpj)) throw new Error("CNPJ inválido.");
     if (!input.items?.length) throw new Error("Adicione ao menos um item na venda.");
+
+    // O colaborador pode estar registrando retroativamente num mês passado
+    // (calendariozinho do topo) — nesse caso o front manda a data desse mês
+    // em dataVenda; sem isso, cai no padrão do schema (agora, no momento
+    // da criação).
+    let createdAt: Date | undefined;
+    if (input.dataVenda) {
+      const parsed = new Date(input.dataVenda);
+      if (Number.isNaN(parsed.getTime())) throw new Error("Data da venda inválida.");
+      createdAt = parsed;
+    }
 
     const catalogIds = input.items.map((i) => i.catalogItemId).filter((v): v is string => !!v);
     const catalogItems = catalogIds.length
@@ -124,6 +141,7 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
         colaboradorId: user.sub,
         clienteNome,
         clienteCnpj,
+        ...(createdAt ? { createdAt } : {}),
         items: { create: itemsData },
       },
     });

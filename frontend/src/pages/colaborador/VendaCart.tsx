@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
 import { maskCnpj, isValidCnpj } from "../../lib/cnpj";
+import { useMonthFilter } from "../../lib/month-filter-context";
 import type { Indicator } from "../../lib/types";
 
 interface CatalogItemRow {
@@ -119,6 +120,7 @@ function QtyInput({ value, onChange }: { value: number; onChange: (v: number) =>
 
 export function VendaCart({ catalog }: { catalog: CatalogData }) {
   const navigate = useNavigate();
+  const { label: mesLabel, isMesAtual, dataReferenciaVenda } = useMonthFilter();
   const [tab, setTab] = useState<Tab>("mv");
   const [qty, setQty] = useState<Record<string, number>>({});
   const [altasBusca, setAltasBusca] = useState("");
@@ -218,7 +220,16 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
 
     setPending(true);
     try {
-      await api.post("/api/sales", { clienteNome, clienteCnpj: cnpjDigits, items });
+      // A venda é sempre registrada dentro do mês que está selecionado no
+      // calendariozinho do topo — assim o colaborador consegue lançar
+      // vendas retroativas de um mês passado (ou futuras, se precisar) e
+      // elas aparecem certinho no acompanhamento daquele mês.
+      await api.post("/api/sales", {
+        clienteNome,
+        clienteCnpj: cnpjDigits,
+        items,
+        dataVenda: dataReferenciaVenda(),
+      });
       navigate("/colaborador/vendas");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Erro ao registrar venda.");
@@ -397,6 +408,11 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
 
         <div className="card p-4 flex flex-col gap-3">
           <h2 className="font-bold text-sm">Resumo do carrinho</h2>
+          {!isMesAtual && (
+            <p className="text-xs rounded-lg px-2.5 py-1.5" style={{ background: "rgba(236,26,114,.1)", color: "var(--accent-2)" }}>
+              📅 Esta venda será registrada em <b>{mesLabel}</b> (mês selecionado lá em cima), não no mês atual.
+            </p>
+          )}
           {cartItems.length === 0 && aparelhos.length === 0 && (
             <p className="text-xs text-ink-dim">Nenhum item selecionado ainda.</p>
           )}
