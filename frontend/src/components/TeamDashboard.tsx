@@ -50,6 +50,36 @@ function FrenteCell({ lancado, ativado, isValor }: { lancado: number; ativado: n
   );
 }
 
+// KPI por frente, no mesmo formato "ativado / de X lançado" já usado na
+// tabela de colaboradores — mas somando pontos (não quantidade de produtos)
+// da equipe inteira no período. Aparelhos continua em R$, já que esse
+// indicador não gera pontos (só valor vendido).
+function PontosFrenteCard({
+  label,
+  icon,
+  lancado,
+  ativado,
+  isValor,
+}: {
+  label: string;
+  icon?: string;
+  lancado: number;
+  ativado: number;
+  isValor?: boolean;
+}) {
+  const fmt = isValor ? fmtBRL : (n: number) => `${fmtNum(n)} pts`;
+  return (
+    <div className="card p-4">
+      <div className="text-[.65rem] uppercase tracking-wide text-ink-dim mb-1">
+        {icon && <span className="mr-1">{icon}</span>}
+        {label}
+      </div>
+      <div className="text-xl font-extrabold">{fmt(ativado)}</div>
+      <div className="text-xs mt-1 text-ink-dim">de {fmt(lancado)} lançado</div>
+    </div>
+  );
+}
+
 // Cor consistente para os dois estados em todos os mini-gráficos por frente —
 // a identidade (Lançados/Ativados) é sempre a mesma cor, então a legenda
 // aparece só uma vez pra seção inteira.
@@ -67,7 +97,7 @@ function FrenteEvolutionChart({
   data: { bucket: string; lancado: number; ativado: number }[];
   isValor?: boolean;
 }) {
-  const fmtValue = isValor ? fmtBRL : (n: number) => fmtNum(n);
+  const fmtValue = isValor ? fmtBRL : (n: number) => `${fmtNum(n)} pts`;
   return (
     <div className="rounded-xl bg-white/[.02] p-3">
       <h3 className="text-xs font-bold uppercase tracking-wide text-ink-dim mb-2">
@@ -110,6 +140,26 @@ export function TeamDashboard({
 }) {
   const { totals, totalsAnterior, evolution, members } = overview;
 
+  const frenteTotais = members.reduce(
+    (acc, m) => {
+      acc.mv.lancado += m.frentes.mv.lancado;
+      acc.mv.ativado += m.frentes.mv.ativado;
+      acc.fbava.lancado += m.frentes.fbava.lancado;
+      acc.fbava.ativado += m.frentes.fbava.ativado;
+      acc.altas.lancado += m.frentes.altas.lancado;
+      acc.altas.ativado += m.frentes.altas.ativado;
+      acc.aparelhos.lancado += m.frentes.aparelhos.lancado;
+      acc.aparelhos.ativado += m.frentes.aparelhos.ativado;
+      return acc;
+    },
+    {
+      mv: { lancado: 0, ativado: 0 },
+      fbava: { lancado: 0, ativado: 0 },
+      altas: { lancado: 0, ativado: 0 },
+      aparelhos: { lancado: 0, ativado: 0 },
+    }
+  );
+
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -137,10 +187,21 @@ export function TeamDashboard({
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Produtos · RENOV MV" icon="📱" value={fmtNum(totals.qtdProdutosMv)} />
-        <KpiCard label="Produtos · RENOV FB" icon="🔄" value={fmtNum(totals.qtdProdutosFbava)} />
-        <KpiCard label="Produtos · ALTAS" icon="🚀" value={fmtNum(totals.qtdProdutosAltas)} />
-        <KpiCard label="Produtos · Aparelhos" icon="💰" value={fmtNum(totals.qtdProdutosAparelhos)} />
+        <PontosFrenteCard label="Pontos · RENOV MV" icon="📱" lancado={frenteTotais.mv.lancado} ativado={frenteTotais.mv.ativado} />
+        <PontosFrenteCard
+          label="Pontos · RENOV FB/AVA"
+          icon="🔄"
+          lancado={frenteTotais.fbava.lancado}
+          ativado={frenteTotais.fbava.ativado}
+        />
+        <PontosFrenteCard label="Pontos · ALTAS" icon="🚀" lancado={frenteTotais.altas.lancado} ativado={frenteTotais.altas.ativado} />
+        <PontosFrenteCard
+          label="Aparelhos"
+          icon="💰"
+          lancado={frenteTotais.aparelhos.lancado}
+          ativado={frenteTotais.aparelhos.ativado}
+          isValor
+        />
       </div>
 
       {!hidePremiacao && (

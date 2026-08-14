@@ -287,7 +287,7 @@ async function getEvolutionSeries(userIds: string[], period: PeriodFilter): Prom
     },
     select: {
       indicator: true,
-      quantity: true,
+      pointsTotal: true,
       valorReais: true,
       ativo: true,
       dataAtivacao: true,
@@ -298,7 +298,10 @@ async function getEvolutionSeries(userIds: string[], period: PeriodFilter): Prom
   for (const item of items) {
     const frente = frenteKeyFromIndicator(item.indicator);
     if (!frente) continue;
-    const valor = frente === "aparelhos" ? item.valorReais ?? 0 : item.quantity;
+    // Aparelhos não gera pontos (pointsTotal sempre 0 nesse indicador) —
+    // o que importa lá é o valor em R$ vendido. As demais frentes usam
+    // pontos (já congelados por item em pointsTotal).
+    const valor = frente === "aparelhos" ? item.valorReais ?? 0 : item.pointsTotal;
 
     if (item.sale.createdAt >= from && item.sale.createdAt <= to) {
       const { key, label } = keyForDate(item.sale.createdAt);
