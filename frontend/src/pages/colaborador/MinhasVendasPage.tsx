@@ -3,7 +3,7 @@ import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
 import { INDICATOR_LABELS } from "../../lib/types";
 import { useMonthFilter } from "../../lib/month-filter-context";
-import { SaleItemActions, SaleFooterActions } from "./SaleActions";
+import { SaleItemActions, SaleFooterActions, EditQuantityInline, RemoveItemButton, AddProductForm } from "./SaleActions";
 
 interface SaleItem {
   id: string;
@@ -206,9 +206,30 @@ export default function MinhasVendasPage() {
                           cancelado={sale.cancelado}
                           onChanged={load}
                         />
+                        {!sale.cancelado && (
+                          <div className="flex items-center gap-3 pt-0.5">
+                            <EditQuantityInline
+                              saleId={sale.id}
+                              itemId={item.id}
+                              indicator={item.indicator}
+                              quantity={item.quantity}
+                              valorReais={item.valorReais}
+                              ativo={item.ativo}
+                              onChanged={load}
+                            />
+                            <RemoveItemButton
+                              saleId={sale.id}
+                              itemId={item.id}
+                              ativo={item.ativo}
+                              onChanged={load}
+                            />
+                          </div>
+                        )}
                       </li>
                     ))}
                   </ul>
+
+                  {!sale.cancelado && <AddProductForm saleId={sale.id} onChanged={load} />}
 
                   <SaleFooterActions saleId={sale.id} cancelado={sale.cancelado} podeExcluir={podeExcluir} onChanged={load} />
                 </div>

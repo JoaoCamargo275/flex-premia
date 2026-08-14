@@ -217,6 +217,129 @@ salesRouter.patch("/:saleId/items/:itemId/ativo", async (req: AuthedRequest, res
   }
 });
 
+// Corrige a quantidade (ou, no caso de Aparelhos, o valor em R$) de um
+// produto que já está na venda — cobre o caso de "digitei errado". Só
+// mexe em itens que ainda não foram marcados como ativos, pra não alterar
+// silenciosamente um produto que já está contando oficialmente pra faixa.
+salesRouter.patch("/:saleId/items/:itemId/quantidade", async (req: AuthedRequest, res) => {
+  try {
+    const user = req.user!;
+    const novaQuantidade = Number(req.body?.quantity);
+    if (!novaQuantidade || novaQuantidade <= 0) throw new Error("Quantidade inválida.");
+
+    const item = await prisma.saleItem.findUnique({
+      where: { id: req.params.itemId as string },
+      include: { sale: true },
+    });
+    if (!item || item.saleId !== req.params.saleId || item.sale.colaboradorId !== user.sub) {
+      throw new Error("Item não encontrado.");
+    }
+    if (item.sale.cancelado) throw new Error("Venda cancelada não pode ser alterada.");
+    if (item.ativo) throw new Error("Este produto já está ativo e não pode mais ser editado.");
+
+    const data =
+      item.indicator === "APARELHOS"
+        ? { valorReais: novaQuantidade }
+        : { quantity: novaQuantidade, pointsTotal: Math.round(novaQuantidade * item.pointsUnit) };
+
+    await prisma.saleItem.update({ where: { id: item.id }, data });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao atualizar quantidade." });
+  }
+});
+
+// Remove um único produto da venda (ex.: foi adicionado por engano) —
+// mesma trava de segurança: não deixa remover um item já ativo.
+salesRouter.delete("/:saleId/items/:itemId", async (req: AuthedRequest, res) => {
+  try {
+    const user = req.user!;
+    const item = await prisma.saleItem.findUnique({
+      where: { id: req.params.itemId as string },
+      include: { sale: true },
+    });
+    if (!item || item.saleId !== req.params.saleId || item.sale.colaboradorId !== user.sub) {
+      throw new Error("Item não encontrado.");
+    }
+    if (item.sale.cancelado) throw new Error("Venda cancelada não pode ser alterada.");
+    if (item.ativo) throw new Error("Este produto já está ativo e não pode mais ser removido.");
+
+    const totalItens = await prisma.saleItem.count({ where: { saleId: item.saleId } });
+    if (totalItens <= 1) throw new Error("A venda precisa ter ao menos um produto — exclua a venda inteira em vez disso.");
+
+    await prisma.saleItem.delete({ where: { id: item.id } });
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao remover produto." });
+  }
+});
+
+// Adiciona um ou mais produtos novos a uma venda (cliente) já existente —
+// pra não precisar recriar tudo do zero quando esquece de incluir um item.
+salesRouter.post("/:saleId/items", async (req: AuthedRequest, res) => {
+  try {
+    const user = req.user!;
+    const input = req.body as { items: CartItemInput[] };
+    if (!input.items?.length) throw new Error("Adicione ao menos um item.");
+
+    const sale = await prisma.sale.findUnique({ where: { id: req.params.saleId as string } });
+    if (!sale || sale.colaboradorId !== user.sub) throw new Error("Venda não encontrada.");
+    if (sale.cancelado) throw new Error("Venda cancelada não pode ser alterada.");
+
+    const catalogIds = input.items.map((i) => i.catalogItemId).filter((v): v is string => !!v);
+    const catalogItems = catalogIds.length
+      ? await prisma.catalogItem.findMany({ where: { id: { in: catalogIds } } })
+      : [];
+    const catalogMap = new Map(catalogItems.map((c) => [c.id, c]));
+
+    const itemsData = input.items.map((item) => {
+      if (item.indicator === "APARELHOS") {
+        const valor = Number(item.quantity) || 0;
+        if (valor <= 0) throw new Error("Informe um valor válido para o aparelho.");
+        const nomeAparelho = (item.label || "").trim();
+        if (!nomeAparelho) throw new Error("Informe o aparelho vendido.");
+        return {
+          saleId: sale.id,
+          indicator: "APARELHOS",
+          label: nomeAparelho,
+          quantity: 1,
+          pointsUnit: 0,
+          pointsTotal: 0,
+          valorReais: valor,
+          observacao: item.observacao?.trim() || null,
+          status: "Pendente",
+        };
+      }
+      const qty = Number(item.quantity) || 0;
+      if (qty <= 0) throw new Error(`Quantidade inválida para ${item.label}.`);
+      const catalogItem = item.catalogItemId ? catalogMap.get(item.catalogItemId) : undefined;
+      const pointsUnit = catalogItem ? catalogItem.points : 0;
+      let label = catalogItem ? catalogItem.label : item.label;
+      if (item.indicator === "ALTAS" && catalogItem?.categoryId) {
+        const prefixo = ALTAS_CATEGORY_PREFIX[catalogItem.categoryId];
+        if (prefixo) label = `${prefixo} ${label}`;
+      }
+      return {
+        saleId: sale.id,
+        indicator: item.indicator,
+        catalogItemId: item.catalogItemId,
+        label,
+        quantity: qty,
+        pointsUnit,
+        pointsTotal: Math.round(qty * pointsUnit),
+        valorReais: null,
+        status: "Pendente",
+      };
+    });
+
+    await prisma.$transaction(itemsData.map((data) => prisma.saleItem.create({ data })));
+
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao adicionar produto." });
+  }
+});
+
 // Cancelar/reabrir uma venda inteira — os pontos param de contar (via
 // aggregate.ts: cancelado=false na soma) independentemente do status ou
 // ativação de cada produto. Cancelar desativa todos os itens da venda.

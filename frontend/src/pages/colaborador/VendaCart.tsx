@@ -6,13 +6,13 @@ import { maskCnpj, isValidCnpj } from "../../lib/cnpj";
 import { useMonthFilter } from "../../lib/month-filter-context";
 import type { Indicator } from "../../lib/types";
 
-interface CatalogItemRow {
+export interface CatalogItemRow {
   id: string;
   label: string;
   points: number;
   price: number | null;
 }
-interface CatalogGroup {
+export interface CatalogGroup {
   categoryId: string | null;
   categoryName: string | null;
   categoryIcon: string | null;
