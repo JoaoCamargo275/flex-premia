@@ -39,17 +39,32 @@ export interface KpiTotals {
   qtdProdutosAparelhos: number;
 }
 
-export interface MonthlyPoint {
-  month: string;
-  lancadas: number;
-  ativadas: number;
+// Evolução ao longo do tempo, já quebrada por frente — o eixo X acompanha o
+// período selecionado no filtro (dia a dia se o período for curto, semana a
+// semana se for mais longo), em vez de sempre fixar "últimos 6 meses".
+export interface FrenteSeriesValue {
+  lancado: number;
+  ativado: number;
+}
+
+export interface EvolutionPoint {
+  bucket: string; // rótulo do eixo X (ex.: "05/08" ou "sem. 03/08")
+  mv: FrenteSeriesValue;
+  fbava: FrenteSeriesValue;
+  altas: FrenteSeriesValue;
+  aparelhos: FrenteSeriesValue; // em R$, não em quantidade
+}
+
+export interface EvolutionSeries {
+  granularity: "day" | "week";
+  points: EvolutionPoint[];
 }
 
 export interface TeamOverview {
   members: MemberOverview[];
   totals: KpiTotals;
   totalsAnterior: KpiTotals;
-  monthly: MonthlyPoint[];
+  evolution: EvolutionSeries;
 }
 
 function periodWhereClause(period: PeriodFilter) {
@@ -170,37 +185,134 @@ function previousPeriod(period: PeriodFilter): PeriodFilter {
   };
 }
 
-async function getMonthlyEvolution(userIds: string[]): Promise<MonthlyPoint[]> {
-  if (userIds.length === 0) return [];
-  const since = new Date();
-  since.setMonth(since.getMonth() - 5);
-  since.setDate(1);
-  since.setHours(0, 0, 0, 0);
-
-  const sales = await prisma.sale.findMany({
-    where: { colaboradorId: { in: userIds }, cancelado: false, createdAt: { gte: since } },
-    select: { createdAt: true, items: { select: { ativo: true } } },
-  });
-
-  const buckets = new Map<string, MonthlyPoint>();
-  for (let i = 0; i < 6; i++) {
-    const d = new Date(since);
-    d.setMonth(d.getMonth() + i);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    buckets.set(key, { month: key, lancadas: 0, ativadas: 0 });
+function frenteKeyFromIndicator(indicator: string): keyof Omit<EvolutionPoint, "bucket"> | null {
+  switch (indicator) {
+    case "RENOV_MV":
+      return "mv";
+    case "RENOV_FB":
+    case "RENOV_AVA_DADOS":
+    case "RENOV_AVA_VOZ":
+      return "fbava";
+    case "ALTAS":
+      return "altas";
+    case "APARELHOS":
+      return "aparelhos";
+    default:
+      return null;
   }
+}
 
-  for (const sale of sales) {
-    const d = sale.createdAt;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const bucket = buckets.get(key);
-    if (bucket) {
-      bucket.lancadas += 1;
-      if (sale.items.some((i) => i.ativo)) bucket.ativadas += 1;
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+
+function dayKey(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function dayLabel(d: Date): string {
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`;
+}
+
+function emptyFrenteSeriesValue(): FrenteSeriesValue {
+  return { lancado: 0, ativado: 0 };
+}
+
+// Evolução no período selecionado, quebrada por frente. Se o período for
+// curto (até 31 dias), mostra dia a dia; se for mais longo, agrupa em
+// blocos de 7 dias — assim o eixo X sempre acompanha o filtro de período
+// escolhido lá em cima, em vez de fixar sempre "últimos 6 meses".
+async function getEvolutionSeries(userIds: string[], period: PeriodFilter): Promise<EvolutionSeries> {
+  if (userIds.length === 0) return { granularity: "day", points: [] };
+
+  const now = new Date();
+  const from = period.from ?? new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const to = period.to ?? now;
+
+  const totalDays = Math.max(1, Math.ceil((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86400000) + 1);
+  const granularity: "day" | "week" = totalDays <= 31 ? "day" : "week";
+
+  const bucketOrder: string[] = [];
+  const points = new Map<string, EvolutionPoint>();
+
+  function ensureBucket(key: string, label: string) {
+    if (!points.has(key)) {
+      bucketOrder.push(key);
+      points.set(key, {
+        bucket: label,
+        mv: emptyFrenteSeriesValue(),
+        fbava: emptyFrenteSeriesValue(),
+        altas: emptyFrenteSeriesValue(),
+        aparelhos: emptyFrenteSeriesValue(),
+      });
     }
   }
 
-  return Array.from(buckets.values());
+  function keyForDate(d: Date): { key: string; label: string } {
+    if (granularity === "day") {
+      return { key: dayKey(d), label: dayLabel(d) };
+    }
+    const diffDays = Math.floor((startOfDay(d).getTime() - startOfDay(from).getTime()) / 86400000);
+    const weekIndex = Math.max(0, Math.floor(diffDays / 7));
+    const weekStart = new Date(from);
+    weekStart.setDate(weekStart.getDate() + weekIndex * 7);
+    return { key: `w${weekIndex}`, label: `sem. ${dayLabel(weekStart)}` };
+  }
+
+  // pré-popula todos os buckets do período, pra o eixo X ficar contínuo
+  // mesmo em dias/semanas sem nenhum registro.
+  if (granularity === "day") {
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(from);
+      d.setDate(d.getDate() + i);
+      ensureBucket(dayKey(d), dayLabel(d));
+    }
+  } else {
+    const totalWeeks = Math.ceil(totalDays / 7);
+    for (let i = 0; i < totalWeeks; i++) {
+      const weekStart = new Date(from);
+      weekStart.setDate(weekStart.getDate() + i * 7);
+      ensureBucket(`w${i}`, `sem. ${dayLabel(weekStart)}`);
+    }
+  }
+
+  const items = await prisma.saleItem.findMany({
+    where: {
+      sale: { colaboradorId: { in: userIds }, cancelado: false },
+      OR: [{ sale: { createdAt: { gte: from, lte: to } } }, { ativo: true, dataAtivacao: { gte: from, lte: to } }],
+    },
+    select: {
+      indicator: true,
+      quantity: true,
+      valorReais: true,
+      ativo: true,
+      dataAtivacao: true,
+      sale: { select: { createdAt: true } },
+    },
+  });
+
+  for (const item of items) {
+    const frente = frenteKeyFromIndicator(item.indicator);
+    if (!frente) continue;
+    const valor = frente === "aparelhos" ? item.valorReais ?? 0 : item.quantity;
+
+    if (item.sale.createdAt >= from && item.sale.createdAt <= to) {
+      const { key, label } = keyForDate(item.sale.createdAt);
+      ensureBucket(key, label);
+      points.get(key)![frente].lancado += valor;
+    }
+    if (item.ativo && item.dataAtivacao && item.dataAtivacao >= from && item.dataAtivacao <= to) {
+      const { key, label } = keyForDate(item.dataAtivacao);
+      ensureBucket(key, label);
+      points.get(key)![frente].ativado += valor;
+    }
+  }
+
+  return { granularity, points: bucketOrder.map((k) => points.get(k)!) };
 }
 
 export async function getTeamOverview(userIds: string[], period: PeriodFilter = {}): Promise<TeamOverview> {
@@ -228,13 +340,13 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
     });
   }
 
-  const [totals, totalsAnterior, monthly] = await Promise.all([
+  const [totals, totalsAnterior, evolution] = await Promise.all([
     getKpiTotals(userIds, period),
     getKpiTotals(userIds, previousPeriod(period)),
-    getMonthlyEvolution(userIds),
+    getEvolutionSeries(userIds, period),
   ]);
 
-  return { members, totals, totalsAnterior, monthly };
+  return { members, totals, totalsAnterior, evolution };
 }
 
 export { getFaixaTables };

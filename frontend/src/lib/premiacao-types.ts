@@ -94,17 +94,29 @@ export interface KpiTotals {
   qtdProdutosAparelhos: number;
 }
 
-export interface MonthlyPoint {
-  month: string;
-  lancadas: number;
-  ativadas: number;
+export interface FrenteSeriesValue {
+  lancado: number;
+  ativado: number;
+}
+
+export interface EvolutionPoint {
+  bucket: string;
+  mv: FrenteSeriesValue;
+  fbava: FrenteSeriesValue;
+  altas: FrenteSeriesValue;
+  aparelhos: FrenteSeriesValue; // em R$, não em quantidade
+}
+
+export interface EvolutionSeries {
+  granularity: "day" | "week";
+  points: EvolutionPoint[];
 }
 
 export interface TeamOverview {
   members: MemberOverview[];
   totals: KpiTotals;
   totalsAnterior: KpiTotals;
-  monthly: MonthlyPoint[];
+  evolution: EvolutionSeries;
 }
 
 export interface ProdutoBreakdownItem {

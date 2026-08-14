@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { fmtBRL, fmtNum } from "../lib/format";
 import type { TeamOverview } from "../lib/premiacao-types";
 
@@ -50,6 +50,54 @@ function FrenteCell({ lancado, ativado, isValor }: { lancado: number; ativado: n
   );
 }
 
+// Cor consistente para os dois estados em todos os mini-gráficos por frente —
+// a identidade (Lançados/Ativados) é sempre a mesma cor, então a legenda
+// aparece só uma vez pra seção inteira.
+const COR_LANCADOS = "#8b3dff";
+const COR_ATIVADOS = "#22c55e";
+
+function FrenteEvolutionChart({
+  title,
+  icon,
+  data,
+  isValor,
+}: {
+  title: string;
+  icon: string;
+  data: { bucket: string; lancado: number; ativado: number }[];
+  isValor?: boolean;
+}) {
+  const fmtValue = isValor ? fmtBRL : (n: number) => fmtNum(n);
+  return (
+    <div className="rounded-xl bg-white/[.02] p-3">
+      <h3 className="text-xs font-bold uppercase tracking-wide text-ink-dim mb-2">
+        {icon} {title}
+      </h3>
+      <div className="h-48">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" vertical={false} />
+            <XAxis dataKey="bucket" stroke="var(--ink-dim)" fontSize={11} interval="preserveStartEnd" />
+            <YAxis
+              stroke="var(--ink-dim)"
+              fontSize={11}
+              allowDecimals={false}
+              width={isValor ? 56 : 34}
+              tickFormatter={(v: number) => (isValor ? fmtBRL(v) : String(v))}
+            />
+            <Tooltip
+              contentStyle={{ background: "var(--panel)", border: "1px solid var(--line)" }}
+              formatter={(value) => fmtValue(typeof value === "number" ? value : Number(value) || 0)}
+            />
+            <Line type="monotone" dataKey="lancado" name="Lançados" stroke={COR_LANCADOS} strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="ativado" name="Ativados" stroke={COR_ATIVADOS} strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
 export function TeamDashboard({
   overview,
   detailBasePath,
@@ -60,7 +108,7 @@ export function TeamDashboard({
   /** No perfil de Supervisor, o valor de premiação em R$ é indiferente — só interessa pontos/quantidades. */
   hidePremiacao?: boolean;
 }) {
-  const { totals, totalsAnterior, monthly, members } = overview;
+  const { totals, totalsAnterior, evolution, members } = overview;
 
   return (
     <div className="flex flex-col gap-6">
@@ -106,20 +154,52 @@ export function TeamDashboard({
       )}
 
       <div className="card p-4">
-        <h2 className="text-sm font-bold mb-3">Evolução mensal (últimos 6 meses)</h2>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={monthly}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
-              <XAxis dataKey="month" stroke="var(--ink-dim)" fontSize={12} />
-              <YAxis stroke="var(--ink-dim)" fontSize={12} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: "var(--panel)", border: "1px solid var(--line)" }} />
-              <Legend />
-              <Line type="monotone" dataKey="lancadas" name="Lançadas" stroke="#8b3dff" strokeWidth={2} />
-              <Line type="monotone" dataKey="ativadas" name="Ativadas" stroke="#22c55e" strokeWidth={2} />
-            </LineChart>
-          </ResponsiveContainer>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="text-sm font-bold">
+            Evolução no período {evolution.granularity === "day" ? "— dia a dia" : "— semana a semana"}
+          </h2>
+          <div className="flex items-center gap-4 text-xs text-ink-dim">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COR_LANCADOS }} />
+              Lançados
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COR_ATIVADOS }} />
+              Ativados
+            </span>
+          </div>
         </div>
+        <p className="text-xs text-ink-dim mb-3">
+          O eixo acompanha o período selecionado no filtro acima — use-o pra ver por dia (períodos de até 31 dias)
+          ou por semana (períodos mais longos).
+        </p>
+        {evolution.points.length === 0 ? (
+          <p className="text-sm text-ink-dim">Sem dados no período selecionado.</p>
+        ) : (
+          <div className="grid md:grid-cols-2 gap-4">
+            <FrenteEvolutionChart
+              title="RENOV MV"
+              icon="📱"
+              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.mv }))}
+            />
+            <FrenteEvolutionChart
+              title="RENOV FB/AVA"
+              icon="🔄"
+              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.fbava }))}
+            />
+            <FrenteEvolutionChart
+              title="ALTAS"
+              icon="🚀"
+              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas }))}
+            />
+            <FrenteEvolutionChart
+              title="Aparelhos"
+              icon="💰"
+              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.aparelhos }))}
+              isValor
+            />
+          </div>
+        )}
       </div>
 
       <div className="card p-4">
