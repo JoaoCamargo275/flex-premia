@@ -132,11 +132,14 @@ export function TeamDashboard({
   overview,
   detailBasePath,
   hidePremiacao,
+  hidePremiacaoEstimada,
 }: {
   overview: TeamOverview;
   detailBasePath: string;
-  /** No perfil de Supervisor, o valor de premiação em R$ é indiferente — só interessa pontos/quantidades. */
+  /** No perfil de Supervisor, o valor de premiação em R$ é indiferente — esconde tile e coluna na tabela. */
   hidePremiacao?: boolean;
+  /** Esconde só o tile "Premiação estimada da equipe" (mantém a coluna "Premiação ativada" na tabela) — usado no Master. */
+  hidePremiacaoEstimada?: boolean;
 }) {
   const { totals, totalsAnterior, evolution, members } = overview;
 
@@ -204,7 +207,7 @@ export function TeamDashboard({
         />
       </div>
 
-      {!hidePremiacao && (
+      {!hidePremiacao && !hidePremiacaoEstimada && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard
             label="Premiação estimada da equipe"

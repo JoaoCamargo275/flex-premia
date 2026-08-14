@@ -68,7 +68,7 @@ export default function MasterOverviewPage() {
       </div>
 
       {error && <p className="text-sm text-accent-3">{error}</p>}
-      {data && <TeamDashboard overview={data.overview} detailBasePath="/master/colaboradores" />}
+      {data && <TeamDashboard overview={data.overview} detailBasePath="/master/colaboradores" hidePremiacaoEstimada />}
     </div>
   );
 }
