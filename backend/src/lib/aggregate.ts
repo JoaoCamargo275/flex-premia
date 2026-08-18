@@ -28,56 +28,87 @@ export interface PeriodFilter {
   to?: Date;
 }
 
+type PontosAcc = { ptsMV: number; ptsFB: number; ptsAvaDados: number; ptsAvaVoz: number; ptsAltas: number; valorAparelhos: number };
+
+function novoPontosAcc(): PontosAcc {
+  return { ptsMV: 0, ptsFB: 0, ptsAvaDados: 0, ptsAvaVoz: 0, ptsAltas: 0, valorAparelhos: 0 };
+}
+
+function somarNoAcc(acc: PontosAcc, indicator: string, pointsTotal: number, valorReais: number | null) {
+  switch (indicator) {
+    case "RENOV_MV":
+      acc.ptsMV += pointsTotal;
+      break;
+    case "RENOV_FB":
+      acc.ptsFB += pointsTotal;
+      break;
+    case "RENOV_AVA_DADOS":
+      acc.ptsAvaDados += pointsTotal;
+      break;
+    case "RENOV_AVA_VOZ":
+      acc.ptsAvaVoz += pointsTotal;
+      break;
+    case "ALTAS":
+      acc.ptsAltas += pointsTotal;
+      break;
+    case "APARELHOS":
+      acc.valorAparelhos += valorReais ?? 0;
+      break;
+  }
+}
+
+// Monta o filtro de data (gte/lte) a partir do período, ou undefined se o
+// período for "todo o histórico" (sem from/to).
+function rangeDoPeriodo(period: PeriodFilter) {
+  if (!period.from && !period.to) return undefined;
+  return { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) };
+}
+
+function dentroDoPeriodo(d: Date | null, period: PeriodFilter): boolean {
+  if (!d) return false;
+  if (period.from && d < period.from) return false;
+  if (period.to && d > period.to) return false;
+  return true;
+}
+
+// "Lançado" conta pela data em que a venda foi registrada (Sale.createdAt,
+// que o colaborador pode escolher em "Nova venda"). "Ativado" conta pela
+// data em que o PRODUTO foi de fato ativado (SaleItem.dataAtivacao, também
+// escolhida pelo colaborador) — são datas independentes, então um item pode
+// contar como lançado num período e como ativado em outro (ex.: vendido em
+// julho, ativado em agosto).
 async function sumPontosPorIndicador(
   colaboradorId: string,
-  onlyAtivo: boolean,
   period: PeriodFilter
-) {
-  // A ativação agora é por PRODUTO (SaleItem.ativo), não mais pela venda
-  // inteira — dois itens da mesma venda podem ativar em datas diferentes.
+): Promise<{ lancado: PontosAcc; ativado: PontosAcc }> {
+  const range = rangeDoPeriodo(period);
+
   const items = await prisma.saleItem.findMany({
     where: {
-      ...(onlyAtivo ? { ativo: true } : {}),
-      sale: {
-        colaboradorId,
-        cancelado: false,
-        ...(period.from || period.to
-          ? {
-              createdAt: {
-                ...(period.from ? { gte: period.from } : {}),
-                ...(period.to ? { lte: period.to } : {}),
-              },
-            }
-          : {}),
-      },
+      sale: { colaboradorId, cancelado: false },
+      ...(range ? { OR: [{ sale: { createdAt: range } }, { ativo: true, dataAtivacao: range }] } : {}),
     },
-    select: { indicator: true, pointsTotal: true, valorReais: true },
+    select: {
+      indicator: true,
+      pointsTotal: true,
+      valorReais: true,
+      ativo: true,
+      dataAtivacao: true,
+      sale: { select: { createdAt: true } },
+    },
   });
 
-  const acc = { ptsMV: 0, ptsFB: 0, ptsAvaDados: 0, ptsAvaVoz: 0, ptsAltas: 0, valorAparelhos: 0 };
+  const lancado = novoPontosAcc();
+  const ativado = novoPontosAcc();
+
   for (const it of items) {
-    switch (it.indicator) {
-      case "RENOV_MV":
-        acc.ptsMV += it.pointsTotal;
-        break;
-      case "RENOV_FB":
-        acc.ptsFB += it.pointsTotal;
-        break;
-      case "RENOV_AVA_DADOS":
-        acc.ptsAvaDados += it.pointsTotal;
-        break;
-      case "RENOV_AVA_VOZ":
-        acc.ptsAvaVoz += it.pointsTotal;
-        break;
-      case "ALTAS":
-        acc.ptsAltas += it.pointsTotal;
-        break;
-      case "APARELHOS":
-        acc.valorAparelhos += it.valorReais ?? 0;
-        break;
-    }
+    const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
+    const contaAtivado = it.ativo && (!range || dentroDoPeriodo(it.dataAtivacao, period));
+    if (contaLancado) somarNoAcc(lancado, it.indicator, it.pointsTotal, it.valorReais);
+    if (contaAtivado) somarNoAcc(ativado, it.indicator, it.pointsTotal, it.valorReais);
   }
-  return acc;
+
+  return { lancado, ativado };
 }
 
 async function getFaltouInjustificada(colaboradorId: string, period: PeriodFilter) {
@@ -144,22 +175,26 @@ export async function getProdutosPorFrente(
   colaboradorId: string,
   period: PeriodFilter = {}
 ): Promise<ProdutosPorFrente> {
+  const range = rangeDoPeriodo(period);
+
+  // Mesma regra do painel: "lançado" pela data da venda, "ativado" pela
+  // data de ativação do produto — datas independentes, um item pode entrar
+  // no lançado de um período e no ativado de outro.
   const items = await prisma.saleItem.findMany({
     where: {
-      sale: {
-        colaboradorId,
-        cancelado: false,
-        ...(period.from || period.to
-          ? {
-              createdAt: {
-                ...(period.from ? { gte: period.from } : {}),
-                ...(period.to ? { lte: period.to } : {}),
-              },
-            }
-          : {}),
-      },
+      sale: { colaboradorId, cancelado: false },
+      ...(range ? { OR: [{ sale: { createdAt: range } }, { ativo: true, dataAtivacao: range }] } : {}),
     },
-    select: { indicator: true, label: true, quantity: true, pointsTotal: true, valorReais: true, ativo: true },
+    select: {
+      indicator: true,
+      label: true,
+      quantity: true,
+      pointsTotal: true,
+      valorReais: true,
+      ativo: true,
+      dataAtivacao: true,
+      sale: { select: { createdAt: true } },
+    },
   });
 
   const maps: Record<FrenteKey, Map<string, ProdutoBreakdownItem>> = {
@@ -172,6 +207,10 @@ export async function getProdutosPorFrente(
   for (const it of items) {
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;
+    const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
+    const contaAtivado = it.ativo && (!range || dentroDoPeriodo(it.dataAtivacao, period));
+    if (!contaLancado && !contaAtivado) continue;
+
     const map = maps[frente];
     let entry = map.get(it.label);
     if (!entry) {
@@ -179,10 +218,12 @@ export async function getProdutosPorFrente(
       map.set(it.label, entry);
     }
     const qtd = frente === "aparelhos" ? 1 : it.quantity;
-    entry.qtdLancada += qtd;
-    entry.pontosLancados += it.pointsTotal;
-    entry.valorLancado += it.valorReais ?? 0;
-    if (it.ativo) {
+    if (contaLancado) {
+      entry.qtdLancada += qtd;
+      entry.pontosLancados += it.pointsTotal;
+      entry.valorLancado += it.valorReais ?? 0;
+    }
+    if (contaAtivado) {
       entry.qtdAtivada += qtd;
       entry.pontosAtivados += it.pointsTotal;
       entry.valorAtivado += it.valorReais ?? 0;
@@ -205,9 +246,8 @@ export async function getPainelColaborador(
   period: PeriodFilter = {}
 ): Promise<PainelColaborador> {
   const tables = await getFaixaTables();
-  const [lancadoAgg, ativadoAgg, faltou] = await Promise.all([
-    sumPontosPorIndicador(colaboradorId, false, period),
-    sumPontosPorIndicador(colaboradorId, true, period),
+  const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou] = await Promise.all([
+    sumPontosPorIndicador(colaboradorId, period),
     getFaltouInjustificada(colaboradorId, period),
   ]);
 

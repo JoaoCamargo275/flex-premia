@@ -73,6 +73,15 @@ function periodWhereClause(period: PeriodFilter) {
     : {};
 }
 
+// Mesmo filtro, mas pra usar num campo de data diferente de "createdAt"
+// (ex.: SaleItem.dataAtivacao) — devolve undefined se o período for "todo o
+// histórico" (chamador decide se omite a chave nesse caso).
+function dateRangeClause(period: PeriodFilter) {
+  return period.from || period.to
+    ? { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) }
+    : undefined;
+}
+
 async function getQuantidadesPorFrente(
   userIds: string[],
   period: PeriodFilter
@@ -112,12 +121,21 @@ async function getQuantidadesPorFrente(
   return acc;
 }
 
+// Conta como "ativado no período" pela data em que o PRODUTO foi ativado
+// (SaleItem.dataAtivacao, escolhida pelo colaborador em "Minhas vendas"),
+// não pela data em que a venda foi lançada — uma venda lançada num mês
+// pode ter um produto ativado só num mês seguinte.
 async function getTaxaAtivacaoColaboradores(userIds: string[], period: PeriodFilter): Promise<number> {
   if (userIds.length === 0) return 0;
   const ativos = await prisma.user.count({
     where: {
       id: { in: userIds },
-      sales: { some: { cancelado: false, items: { some: { ativo: true } }, ...periodWhereClause(period) } },
+      sales: {
+        some: {
+          cancelado: false,
+          items: { some: { ativo: true, ...(dateRangeClause(period) ? { dataAtivacao: dateRangeClause(period) } : {}) } },
+        },
+      },
     },
   });
   return (ativos / userIds.length) * 100;
@@ -145,11 +163,19 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
     ...periodWhereClause(period),
   };
 
-  // "Venda ativada" aqui = venda com pelo menos um produto já ativo (a
-  // ativação em si é controlada por produto, ver SaleItem.ativo).
+  // "Venda ativada" aqui = venda com pelo menos um produto ativado DENTRO
+  // do período (SaleItem.dataAtivacao) — independente de quando a venda em
+  // si foi lançada, já que a ativação pode acontecer num mês seguinte.
+  const dataAtivacaoRange = dateRangeClause(period);
   const [vendasLancadas, vendasAtivadas, quantidades, taxaAtivacaoColaboradores] = await Promise.all([
     prisma.sale.count({ where }),
-    prisma.sale.count({ where: { ...where, items: { some: { ativo: true } } } }),
+    prisma.sale.count({
+      where: {
+        colaboradorId: { in: userIds },
+        cancelado: false,
+        items: { some: { ativo: true, ...(dataAtivacaoRange ? { dataAtivacao: dataAtivacaoRange } : {}) } },
+      },
+    }),
     getQuantidadesPorFrente(userIds, period),
     getTaxaAtivacaoColaboradores(userIds, period),
   ]);
