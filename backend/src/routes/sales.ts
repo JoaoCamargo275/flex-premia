@@ -206,9 +206,19 @@ salesRouter.patch("/:saleId/items/:itemId/ativo", async (req: AuthedRequest, res
     }
     if (item.sale.cancelado) throw new Error("Venda cancelada não pode ser ativada.");
 
+    // Por padrão a data de ativação é "agora", mas o colaborador pode
+    // informar o dia real em que o produto foi ativado (ex.: ativação
+    // retroativa) — mesma ideia da data da venda em "Nova venda".
+    let dataAtivacao: Date | null = ativo ? new Date() : null;
+    if (ativo && typeof req.body?.dataAtivacao === "string" && req.body.dataAtivacao) {
+      const parsed = new Date(req.body.dataAtivacao);
+      if (Number.isNaN(parsed.getTime())) throw new Error("Data de ativação inválida.");
+      dataAtivacao = parsed;
+    }
+
     await prisma.saleItem.update({
       where: { id: item.id },
-      data: { ativo, dataAtivacao: ativo ? new Date() : null },
+      data: { ativo, dataAtivacao },
     });
 
     res.json({ ok: true });

@@ -15,6 +15,7 @@ interface SaleItem {
   observacao: string | null;
   status: string;
   ativo: boolean;
+  dataAtivacao: string | null;
 }
 interface Sale {
   id: string;
@@ -203,6 +204,7 @@ export default function MinhasVendasPage() {
                           itemId={item.id}
                           status={item.status}
                           ativo={item.ativo}
+                          dataAtivacao={item.dataAtivacao}
                           cancelado={sale.cancelado}
                           onChanged={load}
                         />

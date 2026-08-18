@@ -3,6 +3,22 @@ import { api } from "../../lib/api";
 import { SALE_STATUS_SUGESTOES } from "../../lib/types";
 import type { CatalogData, CatalogItemRow } from "./VendaCart";
 
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+function hojeIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+// Combina uma data (YYYY-MM-DD) escolhida pelo colaborador com o horário
+// atual, pra preservar a ordenação por horário do dia — mesma lógica usada
+// na data da venda em "Nova venda".
+function combinarComHoraAtual(dataStr: string): string {
+  const agora = new Date();
+  const [ano, mes, dia] = dataStr.split("-").map(Number);
+  return new Date(ano, (mes || 1) - 1, dia || 1, agora.getHours(), agora.getMinutes(), agora.getSeconds()).toISOString();
+}
+
 // Ações de UM PRODUTO da venda — cada item tem seu próprio status e flag de
 // ativação, já que produtos da mesma venda costumam ativar em datas
 // diferentes (ver backend: SaleItem.status / SaleItem.ativo).
@@ -11,6 +27,7 @@ export function SaleItemActions({
   itemId,
   status,
   ativo,
+  dataAtivacao,
   cancelado,
   onChanged,
 }: {
@@ -18,10 +35,12 @@ export function SaleItemActions({
   itemId: string;
   status: string;
   ativo: boolean;
+  dataAtivacao: string | null;
   cancelado: boolean;
   onChanged: () => void;
 }) {
   const [statusTexto, setStatusTexto] = useState(status);
+  const [dataAtivacaoTexto, setDataAtivacaoTexto] = useState(() => (dataAtivacao ? dataAtivacao.slice(0, 10) : hojeIso()));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const datalistId = `status-sugestoes-${itemId}`;
@@ -40,6 +59,16 @@ export function SaleItemActions({
   }
 
   const statusMudou = statusTexto.trim() !== status.trim() && statusTexto.trim().length > 0;
+  const dataAtivacaoMudou = ativo && dataAtivacaoTexto !== (dataAtivacao ? dataAtivacao.slice(0, 10) : "");
+
+  function alternarAtivo(checked: boolean) {
+    run(() =>
+      api.patch(`/api/sales/${saleId}/items/${itemId}/ativo`, {
+        ativo: checked,
+        ...(checked ? { dataAtivacao: combinarComHoraAtual(dataAtivacaoTexto) } : {}),
+      })
+    );
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -70,14 +99,27 @@ export function SaleItemActions({
       </div>
 
       <label className="flex items-center gap-1.5 text-xs cursor-pointer shrink-0">
-        <input
-          type="checkbox"
-          checked={ativo}
-          disabled={pending || cancelado}
-          onChange={(e) => run(() => api.patch(`/api/sales/${saleId}/items/${itemId}/ativo`, { ativo: e.target.checked }))}
-        />
+        <input type="checkbox" checked={ativo} disabled={pending || cancelado} onChange={(e) => alternarAtivo(e.target.checked)} />
         Ativo
       </label>
+
+      {ativo && (
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[.65rem] text-ink-dim">Ativado em</span>
+          <input
+            type="date"
+            value={dataAtivacaoTexto}
+            disabled={pending || cancelado}
+            onChange={(e) => setDataAtivacaoTexto(e.target.value)}
+            className="bg-transparent border border-line rounded px-1 py-0.5 text-xs"
+          />
+          {dataAtivacaoMudou && (
+            <button type="button" disabled={pending} onClick={() => alternarAtivo(true)} className="text-[.65rem] font-bold text-accent">
+              Salvar
+            </button>
+          )}
+        </div>
+      )}
 
       {error && <p className="text-xs text-accent-3 w-full">{error}</p>}
     </div>

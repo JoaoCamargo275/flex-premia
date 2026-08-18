@@ -118,9 +118,17 @@ function QtyInput({ value, onChange }: { value: number; onChange: (v: number) =>
   );
 }
 
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+function hojeIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
 export function VendaCart({ catalog }: { catalog: CatalogData }) {
   const navigate = useNavigate();
-  const { label: mesLabel, isMesAtual, dataReferenciaVenda } = useMonthFilter();
+  const { label: mesLabel, isMesAtual, from: mesFrom, to: mesTo } = useMonthFilter();
   const [tab, setTab] = useState<Tab>("mv");
   const [qty, setQty] = useState<Record<string, number>>({});
   const [altasBusca, setAltasBusca] = useState("");
@@ -130,8 +138,17 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
   const [aparelhos, setAparelhos] = useState<AparelhoLinha[]>([]);
   const [clienteNome, setClienteNome] = useState("");
   const [clienteCnpj, setClienteCnpj] = useState("");
+  // Dia em que a venda foi de fato feita — por padrão sugere hoje (se dentro
+  // do mês selecionado) ou o 1º dia do mês selecionado, mas o colaborador
+  // pode escolher qualquer dia dentro desse mês (ex.: venda retroativa).
+  const [dataVendaEscolhida, setDataVendaEscolhida] = useState(() => (isMesAtual ? hojeIso() : mesFrom));
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    setDataVendaEscolhida(isMesAtual ? hojeIso() : mesFrom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesFrom, mesTo]);
 
   const setQtyFor = (id: string, v: number) => setQty((prev) => ({ ...prev, [id]: v }));
 
@@ -220,15 +237,26 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
 
     setPending(true);
     try {
-      // A venda é sempre registrada dentro do mês que está selecionado no
-      // calendariozinho do topo — assim o colaborador consegue lançar
-      // vendas retroativas de um mês passado (ou futuras, se precisar) e
-      // elas aparecem certinho no acompanhamento daquele mês.
+      // O colaborador escolhe o dia exato da venda (dentro do mês
+      // selecionado no calendariozinho do topo) — útil pra lançar vendas
+      // retroativas com a data certa, não só "hoje". O horário atual é
+      // preservado, só a data (dia/mês/ano) vem do campo escolhido.
+      const agora = new Date();
+      const [ano, mes, dia] = dataVendaEscolhida.split("-").map(Number);
+      const dataVenda = new Date(
+        ano,
+        (mes || 1) - 1,
+        dia || 1,
+        agora.getHours(),
+        agora.getMinutes(),
+        agora.getSeconds()
+      ).toISOString();
+
       await api.post("/api/sales", {
         clienteNome,
         clienteCnpj: cnpjDigits,
         items,
-        dataVenda: dataReferenciaVenda(),
+        dataVenda,
       });
       navigate("/colaborador/vendas");
     } catch (e) {
@@ -403,6 +431,18 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
               maxLength={18}
             />
             {!cnpjOk && <span className="text-xs text-accent-3">CNPJ inválido.</span>}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs uppercase tracking-wide text-ink-dim">Data da venda</label>
+            <input
+              type="date"
+              className="input"
+              value={dataVendaEscolhida}
+              min={mesFrom}
+              max={mesTo}
+              onChange={(e) => setDataVendaEscolhida(e.target.value)}
+            />
+            <span className="text-[.7rem] text-ink-dim">Precisa estar dentro do mês selecionado lá em cima ({mesLabel}).</span>
           </div>
         </div>
 
