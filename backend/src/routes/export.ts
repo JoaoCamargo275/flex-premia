@@ -44,7 +44,7 @@ exportRouter.get("/team-csv", requireAuth, requireRole("SUPERVISOR", "MASTER"), 
   const header = [
     "Colaborador",
     "Cliente",
-    "CNPJ",
+    "CNPJ/CPF",
     "Data",
     "Status do item",
     "Item ativo",

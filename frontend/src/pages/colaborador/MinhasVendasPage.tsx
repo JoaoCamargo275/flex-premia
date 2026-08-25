@@ -4,6 +4,7 @@ import { fmtBRL, fmtNum } from "../../lib/format";
 import { INDICATOR_LABELS } from "../../lib/types";
 import { useMonthFilter } from "../../lib/month-filter-context";
 import { SaleItemActions, SaleFooterActions, EditQuantityInline, RemoveItemButton, AddProductForm } from "./SaleActions";
+import { maskDocumento } from "../../lib/cnpj";
 
 interface SaleItem {
   id: string;
@@ -26,10 +27,6 @@ interface Sale {
   items: SaleItem[];
 }
 
-function maskCnpjDisplay(digits: string) {
-  return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
-}
-
 export default function MinhasVendasPage() {
   const { from, to, label, isMesAtual } = useMonthFilter();
   const [sales, setSales] = useState<Sale[] | null>(null);
@@ -40,14 +37,14 @@ export default function MinhasVendasPage() {
 
   function copiarCnpj(e: MouseEvent, sale: Sale) {
     e.stopPropagation();
-    const texto = maskCnpjDisplay(sale.clienteCnpj);
+    const texto = maskDocumento(sale.clienteCnpj);
     navigator.clipboard
       .writeText(texto)
       .then(() => {
         setCopiedId(sale.id);
         setTimeout(() => setCopiedId((cur) => (cur === sale.id ? null : cur)), 1500);
       })
-      .catch(() => setError("Não foi possível copiar o CNPJ."));
+      .catch(() => setError("Não foi possível copiar o documento."));
   }
 
   const load = useCallback(() => {
@@ -86,7 +83,7 @@ export default function MinhasVendasPage() {
       {sales && sales.length > 0 && (
         <input
           className="input max-w-sm"
-          placeholder="Buscar por cliente ou CNPJ..."
+          placeholder="Buscar por cliente, CNPJ ou CPF..."
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
@@ -132,14 +129,15 @@ export default function MinhasVendasPage() {
                   <div className="font-bold truncate">{sale.clienteNome}</div>
                   <div className="text-xs text-ink-dim truncate flex items-center gap-1.5">
                     <span>
-                      CNPJ {maskCnpjDisplay(sale.clienteCnpj)} · {new Date(sale.createdAt).toLocaleDateString("pt-BR")}
+                      {sale.clienteCnpj.length === 11 ? "CPF" : "CNPJ"} {maskDocumento(sale.clienteCnpj)} ·{" "}
+                      {new Date(sale.createdAt).toLocaleDateString("pt-BR")}
                     </span>
                     <button
                       type="button"
                       onClick={(e) => copiarCnpj(e, sale)}
                       className="shrink-0 text-[.7rem] font-bold px-1.5 py-0.5 rounded-md hover:bg-white/[.08] transition"
                       style={{ color: copiedId === sale.id ? "var(--good, #22c55e)" : "var(--accent-2)" }}
-                      title="Copiar CNPJ"
+                      title="Copiar documento"
                     >
                       {copiedId === sale.id ? "Copiado ✓" : "Copiar"}
                     </button>

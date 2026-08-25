@@ -286,6 +286,7 @@ const FRENTES_CATALOGO = [
   { key: "RENOV_AVA_DADOS", label: "RENOV. AVA — Dados" },
   { key: "RENOV_AVA_VOZ", label: "RENOV. AVA — Voz" },
   { key: "ALTAS", label: "ALTAS" },
+  { key: "ALTAS_PF", label: "ALTAS PF" },
   { key: "APARELHOS", label: "Aparelhos" },
 ] as const;
 type FrenteKey = (typeof FRENTES_CATALOGO)[number]["key"];
@@ -316,6 +317,10 @@ export function AddProductForm({ saleId, onChanged }: { saleId: string; onChange
   const itensDaFrente: CatalogItemRow[] =
     frente === "ALTAS"
       ? catalog?.ALTAS.flatMap((cat) =>
+          cat.items.map((item) => ({ ...item, label: `${cat.categoryIcon ?? ""} ${cat.categoryName} — ${item.label}` }))
+        ) ?? []
+      : frente === "ALTAS_PF"
+      ? catalog?.ALTAS_PF.flatMap((cat) =>
           cat.items.map((item) => ({ ...item, label: `${cat.categoryIcon ?? ""} ${cat.categoryName} — ${item.label}` }))
         ) ?? []
       : frente === "APARELHOS"

@@ -6,10 +6,12 @@ export interface ResultadoPremiacao {
   ptsMV: number;
   ptsFBAVA: number;
   ptsAltas: number;
+  ptsAltasPF: number;
   valorAparelhos: number;
 
   faixaMV: number;
   faixaALTAS: number;
+  faixaAltasPF: number;
   faixaAparelhosIndicador: number;
   faixaFinal: number;
   faixaDeterminante: number;
@@ -20,6 +22,8 @@ export interface ResultadoPremiacao {
   valorALTAS: number;
   bonusFBAVA: number;
   bonusAparelhosRS: number;
+  bonusAltasPF: number;
+  altasPFLiberado: boolean;
 
   premiacaoFinal: number;
   faltouInjustificada: boolean;
@@ -55,6 +59,7 @@ export interface FaixaTables {
   faixasMV: FaixaRow[];
   faixasFbava: FaixaRow[];
   faixasAltas: FaixaRow[];
+  faixasAltasPF: FaixaRow[];
   aparelhoFaixas: AparelhoFaixaRow[];
   aparelhoBonus: AparelhoBonusRow[];
 }
@@ -68,6 +73,7 @@ export interface MemberFrentes {
   mv: FrenteBreakdown;
   fbava: FrenteBreakdown;
   altas: FrenteBreakdown;
+  altas_pf: FrenteBreakdown;
   aparelhos: FrenteBreakdown; // valor em R$, não pontos
 }
 
@@ -91,6 +97,7 @@ export interface KpiTotals {
   qtdProdutosMv: number;
   qtdProdutosFbava: number;
   qtdProdutosAltas: number;
+  qtdProdutosAltasPF: number;
   qtdProdutosAparelhos: number;
 }
 
@@ -104,6 +111,7 @@ export interface EvolutionPoint {
   mv: FrenteSeriesValue;
   fbava: FrenteSeriesValue;
   altas: FrenteSeriesValue;
+  altas_pf: FrenteSeriesValue;
   aparelhos: FrenteSeriesValue; // em R$, não em quantidade
 }
 
@@ -133,5 +141,6 @@ export interface ProdutosPorFrente {
   mv: ProdutoBreakdownItem[];
   fbava: ProdutoBreakdownItem[];
   altas: ProdutoBreakdownItem[];
+  altas_pf: ProdutoBreakdownItem[];
   aparelhos: ProdutoBreakdownItem[];
 }

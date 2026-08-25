@@ -7,10 +7,11 @@ import {
 } from "./calculo-premiacao";
 
 export async function getFaixaTables(): Promise<FaixaTables> {
-  const [mv, fbava, altas, aparelhoFaixas, aparelhoBonus] = await Promise.all([
+  const [mv, fbava, altas, altasPF, aparelhoFaixas, aparelhoBonus] = await Promise.all([
     prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV" }, orderBy: { faixa: "asc" } }),
     prisma.faixaTable.findMany({ where: { indicator: "RENOV_FBAVA" }, orderBy: { faixa: "asc" } }),
     prisma.faixaTable.findMany({ where: { indicator: "ALTAS" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PF" }, orderBy: { faixa: "asc" } }),
     prisma.aparelhoFaixa.findMany({ orderBy: { faixa: "asc" } }),
     prisma.aparelhoBonus.findMany({ orderBy: { faixa: "asc" } }),
   ]);
@@ -18,6 +19,7 @@ export async function getFaixaTables(): Promise<FaixaTables> {
     faixasMV: mv,
     faixasFbava: fbava,
     faixasAltas: altas,
+    faixasAltasPF: altasPF,
     aparelhoFaixas,
     aparelhoBonus,
   };
@@ -28,10 +30,18 @@ export interface PeriodFilter {
   to?: Date;
 }
 
-type PontosAcc = { ptsMV: number; ptsFB: number; ptsAvaDados: number; ptsAvaVoz: number; ptsAltas: number; valorAparelhos: number };
+type PontosAcc = {
+  ptsMV: number;
+  ptsFB: number;
+  ptsAvaDados: number;
+  ptsAvaVoz: number;
+  ptsAltas: number;
+  ptsAltasPF: number;
+  valorAparelhos: number;
+};
 
 function novoPontosAcc(): PontosAcc {
-  return { ptsMV: 0, ptsFB: 0, ptsAvaDados: 0, ptsAvaVoz: 0, ptsAltas: 0, valorAparelhos: 0 };
+  return { ptsMV: 0, ptsFB: 0, ptsAvaDados: 0, ptsAvaVoz: 0, ptsAltas: 0, ptsAltasPF: 0, valorAparelhos: 0 };
 }
 
 function somarNoAcc(acc: PontosAcc, indicator: string, pointsTotal: number, valorReais: number | null) {
@@ -50,6 +60,9 @@ function somarNoAcc(acc: PontosAcc, indicator: string, pointsTotal: number, valo
       break;
     case "ALTAS":
       acc.ptsAltas += pointsTotal;
+      break;
+    case "ALTAS_PF":
+      acc.ptsAltasPF += pointsTotal;
       break;
     case "APARELHOS":
       acc.valorAparelhos += valorReais ?? 0;
@@ -130,9 +143,9 @@ export interface PainelColaborador {
   ativado: ResultadoPremiacao;
 }
 
-// Agrupamento das 4 frentes usadas nas telas de acompanhamento (Master/Supervisor):
-// RENOV. MV | RENOV. FB/AVA (soma FB + AVA Dados + AVA Voz) | ALTAS | Aparelhos.
-export type FrenteKey = "mv" | "fbava" | "altas" | "aparelhos";
+// Agrupamento das 5 frentes usadas nas telas de acompanhamento (Master/Supervisor):
+// RENOV. MV | RENOV. FB/AVA (soma FB + AVA Dados + AVA Voz) | ALTAS | ALTAS PF | Aparelhos.
+export type FrenteKey = "mv" | "fbava" | "altas" | "altas_pf" | "aparelhos";
 
 function frenteDoIndicador(indicator: string): FrenteKey | null {
   switch (indicator) {
@@ -144,6 +157,8 @@ function frenteDoIndicador(indicator: string): FrenteKey | null {
       return "fbava";
     case "ALTAS":
       return "altas";
+    case "ALTAS_PF":
+      return "altas_pf";
     case "APARELHOS":
       return "aparelhos";
     default:
@@ -165,6 +180,7 @@ export interface ProdutosPorFrente {
   mv: ProdutoBreakdownItem[];
   fbava: ProdutoBreakdownItem[];
   altas: ProdutoBreakdownItem[];
+  altas_pf: ProdutoBreakdownItem[];
   aparelhos: ProdutoBreakdownItem[];
 }
 
@@ -201,6 +217,7 @@ export async function getProdutosPorFrente(
     mv: new Map(),
     fbava: new Map(),
     altas: new Map(),
+    altas_pf: new Map(),
     aparelhos: new Map(),
   };
 
@@ -237,6 +254,7 @@ export async function getProdutosPorFrente(
     mv: ordenar(maps.mv),
     fbava: ordenar(maps.fbava),
     altas: ordenar(maps.altas),
+    altas_pf: ordenar(maps.altas_pf),
     aparelhos: ordenar(maps.aparelhos),
   };
 }

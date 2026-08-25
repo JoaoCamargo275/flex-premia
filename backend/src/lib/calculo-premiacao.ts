@@ -85,6 +85,7 @@ export interface PontosAgregados {
   ptsAvaDados: number;
   ptsAvaVoz: number;
   ptsAltas: number;
+  ptsAltasPF: number;
   valorAparelhos: number;
   faltouInjustificada: boolean;
 }
@@ -93,6 +94,7 @@ export interface FaixaTables {
   faixasMV: FaixaRow[];
   faixasFbava: FaixaRow[];
   faixasAltas: FaixaRow[];
+  faixasAltasPF: FaixaRow[];
   aparelhoFaixas: AparelhoFaixaRow[];
   aparelhoBonus: AparelhoBonusRow[];
 }
@@ -101,10 +103,12 @@ export interface ResultadoPremiacao {
   ptsMV: number;
   ptsFBAVA: number;
   ptsAltas: number;
+  ptsAltasPF: number;
   valorAparelhos: number;
 
   faixaMV: number;
   faixaALTAS: number;
+  faixaAltasPF: number;
   faixaAparelhosIndicador: number;
   faixaFinal: number;
   faixaDeterminante: number;
@@ -115,13 +119,16 @@ export interface ResultadoPremiacao {
   valorALTAS: number;
   bonusFBAVA: number;
   bonusAparelhosRS: number;
+  bonusAltasPF: number;
+  /** true se o bônus PF está liberado (Faixa_1+ em MV, ALTAS e Aparelhos) */
+  altasPFLiberado: boolean;
 
   premiacaoFinal: number;
   faltouInjustificada: boolean;
 }
 
 export function calcularPremiacao(input: PontosAgregados, tables: FaixaTables): ResultadoPremiacao {
-  const { faixasMV, faixasFbava, faixasAltas, aparelhoFaixas, aparelhoBonus } = tables;
+  const { faixasMV, faixasFbava, faixasAltas, faixasAltasPF, aparelhoFaixas, aparelhoBonus } = tables;
 
   const ptsMV = input.ptsMV;
   const fMV = faixaAlcancada(faixasMV, ptsMV);
@@ -148,17 +155,30 @@ export function calcularPremiacao(input: PontosAgregados, tables: FaixaTables): 
   const multAparelhoFinal = bonusAparelhoPercent(aparelhoBonus, input.valorAparelhos);
   const bonusAparelhosRS = input.valorAparelhos * multAparelhoFinal;
 
-  let premiacaoFinal = valorMVFinal + valorALTASFinal + bonusAparelhosRS + bonusFBAVA;
+  // ALTAS_PF (upsell Pessoa Física): funciona como bônus aditivo — igual a
+  // RENOV. FB/AVA — não participa da regra da menor faixa (min()) nem do
+  // "Faixa 0 zera tudo". A diferença é que ele só é pago se o colaborador já
+  // tiver alcançado ao menos a Faixa_1 nas 3 frentes PJ determinantes
+  // (RENOV. MV, ALTAS e Aparelhos) — regra explícita de "Regras de Premiação".
+  const ptsAltasPF = input.ptsAltasPF;
+  const fALTASPF = faixaAlcancada(faixasAltasPF, ptsAltasPF);
+  const bonusAltasPFBruto = fALTASPF.faixa === 0 ? 0 : valorSemTeto(faixasAltasPF, fALTASPF.faixa, ptsAltasPF);
+  const altasPFLiberado = fMV.faixa >= 1 && fALTAS.faixa >= 1 && fAparelhos.faixa >= 1;
+  const bonusAltasPF = altasPFLiberado ? bonusAltasPFBruto : 0;
+
+  let premiacaoFinal = valorMVFinal + valorALTASFinal + bonusAparelhosRS + bonusFBAVA + bonusAltasPF;
   if (input.faltouInjustificada) premiacaoFinal = 0;
 
   return {
     ptsMV,
     ptsFBAVA,
     ptsAltas,
+    ptsAltasPF,
     valorAparelhos: input.valorAparelhos,
 
     faixaMV: fMV.faixa,
     faixaALTAS: fALTAS.faixa,
+    faixaAltasPF: fALTASPF.faixa,
     faixaAparelhosIndicador: fAparelhos.faixa,
     faixaFinal: faixaFinalNum,
     faixaDeterminante,
@@ -169,6 +189,8 @@ export function calcularPremiacao(input: PontosAgregados, tables: FaixaTables): 
     valorALTAS: input.faltouInjustificada ? 0 : valorALTASFinal,
     bonusFBAVA: input.faltouInjustificada ? 0 : bonusFBAVA,
     bonusAparelhosRS: input.faltouInjustificada ? 0 : bonusAparelhosRS,
+    bonusAltasPF: input.faltouInjustificada ? 0 : bonusAltasPF,
+    altasPFLiberado,
 
     premiacaoFinal,
     faltouInjustificada: input.faltouInjustificada,

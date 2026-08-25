@@ -20,7 +20,7 @@ datasource db {
 //     — cada PRODUTO da venda tem seu próprio status e flag "ativo", já que
 //     produtos de uma mesma venda costumam ativar em datas diferentes. O
 //     cancelamento continua sendo por venda inteira (Sale.cancelado).
-//   Indicator: RENOV_MV | RENOV_FB | RENOV_AVA_DADOS | RENOV_AVA_VOZ | ALTAS | APARELHOS
+//   Indicator: RENOV_MV | RENOV_FB | RENOV_AVA_DADOS | RENOV_AVA_VOZ | ALTAS | ALTAS_PF | APARELHOS
 
 model Team {
   id           String   @id @default(cuid())

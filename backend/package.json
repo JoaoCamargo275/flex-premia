@@ -9,6 +9,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:add-altas-pf": "tsx prisma/add-catalogo-pf.ts",
     "db:studio": "prisma studio"
   },
   "prisma": {

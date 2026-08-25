@@ -12,6 +12,7 @@ export interface MemberFrentes {
   mv: FrenteBreakdown;
   fbava: FrenteBreakdown;
   altas: FrenteBreakdown;
+  altas_pf: FrenteBreakdown;
   aparelhos: FrenteBreakdown; // valor em R$, não pontos
 }
 
@@ -36,6 +37,7 @@ export interface KpiTotals {
   qtdProdutosMv: number;
   qtdProdutosFbava: number;
   qtdProdutosAltas: number;
+  qtdProdutosAltasPF: number;
   qtdProdutosAparelhos: number;
 }
 
@@ -52,6 +54,7 @@ export interface EvolutionPoint {
   mv: FrenteSeriesValue;
   fbava: FrenteSeriesValue;
   altas: FrenteSeriesValue;
+  altas_pf: FrenteSeriesValue;
   aparelhos: FrenteSeriesValue; // em R$, não em quantidade
 }
 
@@ -85,8 +88,8 @@ function dateRangeClause(period: PeriodFilter) {
 async function getQuantidadesPorFrente(
   userIds: string[],
   period: PeriodFilter
-): Promise<{ mv: number; fbava: number; altas: number; aparelhos: number }> {
-  if (userIds.length === 0) return { mv: 0, fbava: 0, altas: 0, aparelhos: 0 };
+): Promise<{ mv: number; fbava: number; altas: number; altas_pf: number; aparelhos: number }> {
+  if (userIds.length === 0) return { mv: 0, fbava: 0, altas: 0, altas_pf: 0, aparelhos: 0 };
 
   const items = await prisma.saleItem.findMany({
     where: {
@@ -99,7 +102,7 @@ async function getQuantidadesPorFrente(
     select: { indicator: true, quantity: true },
   });
 
-  const acc = { mv: 0, fbava: 0, altas: 0, aparelhos: 0 };
+  const acc = { mv: 0, fbava: 0, altas: 0, altas_pf: 0, aparelhos: 0 };
   for (const it of items) {
     switch (it.indicator) {
       case "RENOV_MV":
@@ -112,6 +115,9 @@ async function getQuantidadesPorFrente(
         break;
       case "ALTAS":
         acc.altas += it.quantity;
+        break;
+      case "ALTAS_PF":
+        acc.altas_pf += it.quantity;
         break;
       case "APARELHOS":
         acc.aparelhos += 1;
@@ -153,6 +159,7 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
       qtdProdutosMv: 0,
       qtdProdutosFbava: 0,
       qtdProdutosAltas: 0,
+      qtdProdutosAltasPF: 0,
       qtdProdutosAparelhos: 0,
     };
   }
@@ -198,6 +205,7 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
     qtdProdutosMv: quantidades.mv,
     qtdProdutosFbava: quantidades.fbava,
     qtdProdutosAltas: quantidades.altas,
+    qtdProdutosAltasPF: quantidades.altas_pf,
     qtdProdutosAparelhos: quantidades.aparelhos,
   };
 }
@@ -221,6 +229,8 @@ function frenteKeyFromIndicator(indicator: string): keyof Omit<EvolutionPoint, "
       return "fbava";
     case "ALTAS":
       return "altas";
+    case "ALTAS_PF":
+      return "altas_pf";
     case "APARELHOS":
       return "aparelhos";
     default:
@@ -273,6 +283,7 @@ export async function getEvolutionSeries(userIds: string[], period: PeriodFilter
         mv: emptyFrenteSeriesValue(),
         fbava: emptyFrenteSeriesValue(),
         altas: emptyFrenteSeriesValue(),
+        altas_pf: emptyFrenteSeriesValue(),
         aparelhos: emptyFrenteSeriesValue(),
       });
     }
@@ -364,6 +375,7 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
         mv: { lancado: painel.lancado.ptsMV, ativado: painel.ativado.ptsMV },
         fbava: { lancado: painel.lancado.ptsFBAVA, ativado: painel.ativado.ptsFBAVA },
         altas: { lancado: painel.lancado.ptsAltas, ativado: painel.ativado.ptsAltas },
+        altas_pf: { lancado: painel.lancado.ptsAltasPF, ativado: painel.ativado.ptsAltasPF },
         aparelhos: { lancado: painel.lancado.valorAparelhos, ativado: painel.ativado.valorAparelhos },
       },
     });

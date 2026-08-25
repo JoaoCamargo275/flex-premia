@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
-import { maskCnpj, isValidCnpj } from "../../lib/cnpj";
+import { maskCnpj, isValidCnpj, maskCpf, isValidCpf } from "../../lib/cnpj";
 import { useMonthFilter } from "../../lib/month-filter-context";
 import type { Indicator } from "../../lib/types";
 
@@ -24,6 +24,7 @@ export interface CatalogData {
   RENOV_AVA_DADOS: CatalogItemRow[];
   RENOV_AVA_VOZ: CatalogItemRow[];
   ALTAS: CatalogGroup[];
+  ALTAS_PF: CatalogGroup[];
 }
 
 interface CartItemInput {
@@ -41,7 +42,7 @@ interface AparelhoLinha {
   observacao: string;
 }
 
-type Tab = "mv" | "fbava" | "altas" | "aparelhos";
+type Tab = "mv" | "fbava" | "altas" | "altas_pf" | "aparelhos";
 
 // Mesmo mapeamento usado no backend (ver ALTAS_CATEGORY_PREFIX em
 // backend/src/routes/sales.ts) — só para o resumo do carrinho já mostrar o
@@ -61,12 +62,24 @@ const ALTAS_CATEGORY_PREFIX: Record<string, string> = {
   mdm: "MDM",
   valesaude: "Vale Saúde",
   travel: "Travel",
+  seguro: "Seguro Celular",
+};
+
+// ALTAS_PF (Pessoa Física) — aba própria, separada de ALTAS (PJ). Mesmo
+// mapeamento usado no backend (ver ALTAS_PF_CATEGORY_PREFIX em sales.ts).
+const ALTAS_PF_CATEGORY_PREFIX: Record<string, string> = {
+  pf_fixa: "FIXA",
+  pf_tv500600: "TV 500/600MB",
+  pf_tv700: "TV 700MG+",
+  pf_pos: "PÓS",
+  pf_controle: "CONTROLE",
 };
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "mv", label: "RENOV. MV", emoji: "📱" },
   { id: "fbava", label: "RENOV. FB/AVA", emoji: "🔄" },
   { id: "altas", label: "ALTAS", emoji: "🚀" },
+  { id: "altas_pf", label: "ALTAS PF", emoji: "🧑" },
   { id: "aparelhos", label: "Aparelhos", emoji: "💰" },
 ];
 
@@ -132,12 +145,16 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
   const [tab, setTab] = useState<Tab>("mv");
   const [qty, setQty] = useState<Record<string, number>>({});
   const [altasBusca, setAltasBusca] = useState("");
+  const [altasPFBusca, setAltasPFBusca] = useState("");
   const [aparelhoNome, setAparelhoNome] = useState("");
   const [aparelhoValorInput, setAparelhoValorInput] = useState("");
   const [aparelhoObs, setAparelhoObs] = useState("");
   const [aparelhos, setAparelhos] = useState<AparelhoLinha[]>([]);
   const [clienteNome, setClienteNome] = useState("");
   const [clienteCnpj, setClienteCnpj] = useState("");
+  // ALTAS_PF é venda para Pessoa Física — o cliente é identificado por CPF,
+  // não por CNPJ. O campo lateral troca sozinho de acordo com a aba atual.
+  const [clienteCpf, setClienteCpf] = useState("");
   // Dia em que a venda foi de fato feita — por padrão sugere hoje (se dentro
   // do mês selecionado) ou o 1º dia do mês selecionado, mas o colaborador
   // pode escolher qualquer dia dentro desse mês (ex.: venda retroativa).
@@ -180,6 +197,10 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
     // perder depois no acompanhamento — mesma regra aplicada no backend
     // quando a venda é de fato salva (ver ALTAS_CATEGORY_PREFIX em sales.ts).
     for (const cat of catalog.ALTAS) pushGroup("ALTAS", cat.items, cat.categoryId ? ALTAS_CATEGORY_PREFIX[cat.categoryId] : undefined);
+    // ALTAS_PF fica numa aba própria, mas os itens marcados entram no mesmo
+    // carrinho/resumo — só o indicador salvo é diferente (ALTAS_PF, não ALTAS).
+    for (const cat of catalog.ALTAS_PF)
+      pushGroup("ALTAS_PF", cat.items, cat.categoryId ? ALTAS_PF_CATEGORY_PREFIX[cat.categoryId] : undefined);
 
     return rows;
   }, [qty, catalog]);
@@ -194,10 +215,29 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
     );
   }, [catalog, altasBusca]);
 
+  const altasPFFilteredCount = useMemo(() => {
+    const q = altasPFBusca.trim().toLowerCase();
+    if (!q) return catalog.ALTAS_PF.reduce((acc, cat) => acc + cat.items.length, 0);
+    return catalog.ALTAS_PF.reduce(
+      (acc, cat) =>
+        acc + cat.items.filter((item) => item.label.toLowerCase().includes(q) || (cat.categoryName ?? "").toLowerCase().includes(q)).length,
+      0
+    );
+  }, [catalog, altasPFBusca]);
+
   const totalPontos = cartItems.reduce((acc, r) => acc + r.subtotal, 0);
   const totalAparelhos = aparelhos.reduce((acc, a) => acc + (parseFloat(a.valor.replace(/\./g, "").replace(",", ".")) || 0), 0);
   const cnpjDigits = clienteCnpj.replace(/\D/g, "");
   const cnpjOk = cnpjDigits.length === 0 || isValidCnpj(cnpjDigits);
+  const cpfDigits = clienteCpf.replace(/\D/g, "");
+  const cpfOk = cpfDigits.length === 0 || isValidCpf(cpfDigits);
+
+  // Uma venda é OU Pessoa Física (só itens ALTAS_PF) OU Pessoa Jurídica (só
+  // as demais frentes) — nunca as duas juntas, já que o cliente identificado
+  // pelo CPF/CNPJ é sempre uma pessoa OU uma empresa.
+  const temItemPF = cartItems.some((r) => r.indicator === "ALTAS_PF");
+  const temItemNaoPF = cartItems.some((r) => r.indicator !== "ALTAS_PF") || aparelhos.length > 0;
+  const misturouPFeNaoPF = temItemPF && temItemNaoPF;
 
   const aparelhoValorNum = parseFloat(aparelhoValorInput.replace(/\./g, "").replace(",", ".")) || 0;
   function addAparelho() {
@@ -216,7 +256,8 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
 
   const canSubmit =
     clienteNome.trim().length > 1 &&
-    isValidCnpj(cnpjDigits) &&
+    !misturouPFeNaoPF &&
+    (temItemPF ? isValidCpf(cpfDigits) : isValidCnpj(cnpjDigits)) &&
     (cartItems.length > 0 || aparelhos.length > 0) &&
     !pending;
 
@@ -234,6 +275,8 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
         items.push({ indicator: "APARELHOS", label: a.nome, quantity: valor, observacao: a.observacao || undefined });
       }
     }
+
+    const documentoCliente = temItemPF ? cpfDigits : cnpjDigits;
 
     setPending(true);
     try {
@@ -254,7 +297,7 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
 
       await api.post("/api/sales", {
         clienteNome,
-        clienteCnpj: cnpjDigits,
+        clienteCnpj: documentoCliente,
         items,
         dataVenda,
       });
@@ -331,6 +374,48 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
                 })}
                 {altasBusca.trim() && altasFilteredCount === 0 && (
                   <p className="text-sm text-ink-dim">Nenhum produto encontrado para "{altasBusca}".</p>
+                )}
+              </div>
+            </div>
+          )}
+          {tab === "altas_pf" && (
+            <div className="flex flex-col gap-4">
+              <p className="text-xs text-ink-dim">
+                Vendas de <b>Pessoa Física</b> (upsell PF) — o bônus dessas vendas só é liberado depois de atingir ao
+                menos a Faixa 1 em RENOV. MV, ALTAS e Aparelhos (PJ).
+              </p>
+              <input
+                type="text"
+                className="input"
+                placeholder="🔎 Buscar produto ou categoria..."
+                value={altasPFBusca}
+                onChange={(e) => setAltasPFBusca(e.target.value)}
+              />
+              <div className="flex flex-col gap-5 max-h-[60vh] overflow-y-auto pr-1">
+                {catalog.ALTAS_PF.map((cat) => {
+                  const q = altasPFBusca.trim().toLowerCase();
+                  const items = q
+                    ? cat.items.filter(
+                        (item) => item.label.toLowerCase().includes(q) || (cat.categoryName ?? "").toLowerCase().includes(q)
+                      )
+                    : cat.items;
+                  if (q && items.length === 0) return null;
+                  return (
+                    <ItemTable
+                      key={cat.categoryId}
+                      title={`${cat.categoryIcon ?? ""} ${cat.categoryName}`}
+                      items={items}
+                      qty={qty}
+                      setQty={setQtyFor}
+                      withPrice
+                    />
+                  );
+                })}
+                {altasPFBusca.trim() && altasPFFilteredCount === 0 && (
+                  <p className="text-sm text-ink-dim">Nenhum produto encontrado para "{altasPFBusca}".</p>
+                )}
+                {catalog.ALTAS_PF.every((cat) => cat.items.length === 0) && (
+                  <p className="text-sm text-ink-dim">Catálogo de Pessoa Física ainda não cadastrado.</p>
                 )}
               </div>
             </div>
@@ -421,17 +506,32 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
               placeholder="Razão social / nome"
             />
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs uppercase tracking-wide text-ink-dim">CNPJ</label>
-            <input
-              className="input"
-              value={clienteCnpj}
-              onChange={(e) => setClienteCnpj(maskCnpj(e.target.value))}
-              placeholder="00.000.000/0000-00"
-              maxLength={18}
-            />
-            {!cnpjOk && <span className="text-xs text-accent-3">CNPJ inválido.</span>}
-          </div>
+          {tab === "altas_pf" ? (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs uppercase tracking-wide text-ink-dim">CPF</label>
+              <input
+                className="input"
+                value={clienteCpf}
+                onChange={(e) => setClienteCpf(maskCpf(e.target.value))}
+                placeholder="000.000.000-00"
+                maxLength={14}
+              />
+              {!cpfOk && <span className="text-xs text-accent-3">CPF inválido.</span>}
+              <span className="text-[.7rem] text-ink-dim">Vendas ALTAS PF identificam o cliente por CPF (Pessoa Física).</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label className="text-xs uppercase tracking-wide text-ink-dim">CNPJ</label>
+              <input
+                className="input"
+                value={clienteCnpj}
+                onChange={(e) => setClienteCnpj(maskCnpj(e.target.value))}
+                placeholder="00.000.000/0000-00"
+                maxLength={18}
+              />
+              {!cnpjOk && <span className="text-xs text-accent-3">CNPJ inválido.</span>}
+            </div>
+          )}
           <div className="flex flex-col gap-1">
             <label className="text-xs uppercase tracking-wide text-ink-dim">Data da venda</label>
             <input
@@ -455,6 +555,12 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
           )}
           {cartItems.length === 0 && aparelhos.length === 0 && (
             <p className="text-xs text-ink-dim">Nenhum item selecionado ainda.</p>
+          )}
+          {misturouPFeNaoPF && (
+            <p className="text-xs rounded-lg px-2.5 py-1.5" style={{ background: "rgba(255,77,109,.1)", color: "var(--accent-3)" }}>
+              ⚠️ Não é possível misturar produtos ALTAS PF (Pessoa Física) com outras frentes na mesma venda. Remova um dos
+              dois grupos ou registre em vendas separadas.
+            </p>
           )}
           <ul className="flex flex-col gap-2 max-h-64 overflow-y-auto">
             {cartItems.map((r) => (

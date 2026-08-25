@@ -28,6 +28,7 @@ export const INDICATORS = [
   "RENOV_AVA_DADOS",
   "RENOV_AVA_VOZ",
   "ALTAS",
+  "ALTAS_PF",
   "APARELHOS",
 ] as const;
 export type Indicator = (typeof INDICATORS)[number];
@@ -38,8 +39,9 @@ export const INDICATOR_LABELS: Record<Indicator, string> = {
   RENOV_AVA_DADOS: "RENOV. AVA — Dados",
   RENOV_AVA_VOZ: "RENOV. AVA — Voz",
   ALTAS: "ALTAS",
+  ALTAS_PF: "ALTAS PF",
   APARELHOS: "Aparelhos",
 };
 
 // Faixa de pontuação agrupada para exibição (FB/AVA soma os 3 sub-indicadores)
-export type FaixaGroup = "RENOV_MV" | "RENOV_FBAVA" | "ALTAS";
+export type FaixaGroup = "RENOV_MV" | "RENOV_FBAVA" | "ALTAS" | "ALTAS_PF";

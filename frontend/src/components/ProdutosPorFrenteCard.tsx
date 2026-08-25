@@ -5,6 +5,7 @@ const FRENTES: { key: keyof ProdutosPorFrente; label: string; icon: string; isVa
   { key: "mv", label: "RENOV. MV", icon: "📱" },
   { key: "fbava", label: "RENOV. FB/AVA", icon: "🔄" },
   { key: "altas", label: "ALTAS", icon: "🚀" },
+  { key: "altas_pf", label: "ALTAS PF", icon: "🧑" },
   { key: "aparelhos", label: "Aparelhos", icon: "💰", isValor: true },
 ];
 

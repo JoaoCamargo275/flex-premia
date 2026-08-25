@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware";
-import { isValidCnpj, onlyDigits } from "../lib/cnpj";
+import { isValidCnpj, isValidCpf, onlyDigits } from "../lib/cnpj";
 import type { Indicator } from "../lib/types";
 import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
@@ -37,6 +37,16 @@ const ALTAS_CATEGORY_PREFIX: Record<string, string> = {
   mdm: "MDM",
   valesaude: "Vale Saúde",
   travel: "Travel",
+  seguro: "Seguro Celular",
+};
+
+// Mesma ideia, mas para as categorias de ALTAS_PF (Pessoa Física).
+const ALTAS_PF_CATEGORY_PREFIX: Record<string, string> = {
+  pf_fixa: "FIXA",
+  pf_tv500600: "TV 500/600MB",
+  pf_tv700: "TV 700MG+",
+  pf_pos: "PÓS",
+  pf_controle: "CONTROLE",
 };
 
 // O colaborador registra as vendas mês a mês — o calendariozinho ao lado do
@@ -78,8 +88,22 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
     const clienteCnpj = onlyDigits(input.clienteCnpj || "");
 
     if (!clienteNome) throw new Error("Informe o nome do cliente.");
-    if (!isValidCnpj(clienteCnpj)) throw new Error("CNPJ inválido.");
     if (!input.items?.length) throw new Error("Adicione ao menos um item na venda.");
+
+    // ALTAS_PF é venda para Pessoa Física (identificada por CPF) — as demais
+    // frentes são sempre Pessoa Jurídica (CNPJ). Uma venda não pode misturar
+    // itens PF com itens PJ, já que o cliente é uma pessoa OU uma empresa,
+    // nunca as duas ao mesmo tempo.
+    const temItemPF = input.items.some((i) => i.indicator === "ALTAS_PF");
+    const temItemNaoPF = input.items.some((i) => i.indicator !== "ALTAS_PF");
+    if (temItemPF && temItemNaoPF) {
+      throw new Error("Vendas ALTAS PF (Pessoa Física) não podem ser misturadas com outras frentes na mesma venda — registre em vendas separadas.");
+    }
+    if (temItemPF) {
+      if (!isValidCpf(clienteCnpj)) throw new Error("CPF inválido.");
+    } else {
+      if (!isValidCnpj(clienteCnpj)) throw new Error("CNPJ inválido.");
+    }
 
     // O colaborador pode estar registrando retroativamente num mês passado
     // (calendariozinho do topo) — nesse caso o front manda a data desse mês
@@ -122,6 +146,10 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
       let label = catalogItem ? catalogItem.label : item.label;
       if (item.indicator === "ALTAS" && catalogItem?.categoryId) {
         const prefixo = ALTAS_CATEGORY_PREFIX[catalogItem.categoryId];
+        if (prefixo) label = `${prefixo} ${label}`;
+      }
+      if (item.indicator === "ALTAS_PF" && catalogItem?.categoryId) {
+        const prefixo = ALTAS_PF_CATEGORY_PREFIX[catalogItem.categoryId];
         if (prefixo) label = `${prefixo} ${label}`;
       }
       return {
@@ -296,6 +324,18 @@ salesRouter.post("/:saleId/items", async (req: AuthedRequest, res) => {
     if (!sale || sale.colaboradorId !== user.sub) throw new Error("Venda não encontrada.");
     if (sale.cancelado) throw new Error("Venda cancelada não pode ser alterada.");
 
+    // A venda já nasceu como PF (CPF, 11 dígitos) ou PJ (CNPJ, 14 dígitos) —
+    // não deixa acrescentar um item do tipo oposto a essa venda.
+    const vendaEhPF = onlyDigits(sale.clienteCnpj).length === 11;
+    const temItemPF = input.items.some((i) => i.indicator === "ALTAS_PF");
+    const temItemNaoPF = input.items.some((i) => i.indicator !== "ALTAS_PF");
+    if (vendaEhPF && temItemNaoPF) {
+      throw new Error("Esta venda é de Pessoa Física (CPF) — não é possível adicionar produtos de outras frentes (PJ) a ela.");
+    }
+    if (!vendaEhPF && temItemPF) {
+      throw new Error("Esta venda é de Pessoa Jurídica (CNPJ) — não é possível adicionar produtos ALTAS PF a ela.");
+    }
+
     const catalogIds = input.items.map((i) => i.catalogItemId).filter((v): v is string => !!v);
     const catalogItems = catalogIds.length
       ? await prisma.catalogItem.findMany({ where: { id: { in: catalogIds } } })
@@ -327,6 +367,10 @@ salesRouter.post("/:saleId/items", async (req: AuthedRequest, res) => {
       let label = catalogItem ? catalogItem.label : item.label;
       if (item.indicator === "ALTAS" && catalogItem?.categoryId) {
         const prefixo = ALTAS_CATEGORY_PREFIX[catalogItem.categoryId];
+        if (prefixo) label = `${prefixo} ${label}`;
+      }
+      if (item.indicator === "ALTAS_PF" && catalogItem?.categoryId) {
+        const prefixo = ALTAS_PF_CATEGORY_PREFIX[catalogItem.categoryId];
         if (prefixo) label = `${prefixo} ${label}`;
       }
       return {

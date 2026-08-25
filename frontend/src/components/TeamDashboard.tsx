@@ -151,6 +151,8 @@ export function TeamDashboard({
       acc.fbava.ativado += m.frentes.fbava.ativado;
       acc.altas.lancado += m.frentes.altas.lancado;
       acc.altas.ativado += m.frentes.altas.ativado;
+      acc.altas_pf.lancado += m.frentes.altas_pf.lancado;
+      acc.altas_pf.ativado += m.frentes.altas_pf.ativado;
       acc.aparelhos.lancado += m.frentes.aparelhos.lancado;
       acc.aparelhos.ativado += m.frentes.aparelhos.ativado;
       return acc;
@@ -159,6 +161,7 @@ export function TeamDashboard({
       mv: { lancado: 0, ativado: 0 },
       fbava: { lancado: 0, ativado: 0 },
       altas: { lancado: 0, ativado: 0 },
+      altas_pf: { lancado: 0, ativado: 0 },
       aparelhos: { lancado: 0, ativado: 0 },
     }
   );
@@ -189,7 +192,7 @@ export function TeamDashboard({
         />
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <PontosFrenteCard label="Pontos · RENOV MV" icon="📱" lancado={frenteTotais.mv.lancado} ativado={frenteTotais.mv.ativado} />
         <PontosFrenteCard
           label="Pontos · RENOV FB/AVA"
@@ -198,6 +201,12 @@ export function TeamDashboard({
           ativado={frenteTotais.fbava.ativado}
         />
         <PontosFrenteCard label="Pontos · ALTAS" icon="🚀" lancado={frenteTotais.altas.lancado} ativado={frenteTotais.altas.ativado} />
+        <PontosFrenteCard
+          label="Pontos · ALTAS PF"
+          icon="🧑"
+          lancado={frenteTotais.altas_pf.lancado}
+          ativado={frenteTotais.altas_pf.ativado}
+        />
         <PontosFrenteCard
           label="Aparelhos"
           icon="💰"
@@ -257,6 +266,11 @@ export function TeamDashboard({
               data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas }))}
             />
             <FrenteEvolutionChart
+              title="ALTAS PF"
+              icon="🧑"
+              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas_pf }))}
+            />
+            <FrenteEvolutionChart
               title="Aparelhos"
               icon="💰"
               data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.aparelhos }))}
@@ -277,6 +291,7 @@ export function TeamDashboard({
                 <th className="py-2 pr-3">📱 RENOV MV</th>
                 <th className="py-2 pr-3">🔄 RENOV FB</th>
                 <th className="py-2 pr-3">🚀 ALTAS</th>
+                <th className="py-2 pr-3">🧑 ALTAS PF</th>
                 <th className="py-2 pr-3">💰 Aparelhos</th>
                 {!hidePremiacao && <th className="py-2 pr-3">Premiação ativada</th>}
                 <th className="py-2"></th>
@@ -300,6 +315,9 @@ export function TeamDashboard({
                     <FrenteCell lancado={m.frentes.altas.lancado} ativado={m.frentes.altas.ativado} />
                   </td>
                   <td className="py-2 pr-3">
+                    <FrenteCell lancado={m.frentes.altas_pf.lancado} ativado={m.frentes.altas_pf.ativado} />
+                  </td>
+                  <td className="py-2 pr-3">
                     <FrenteCell lancado={m.frentes.aparelhos.lancado} ativado={m.frentes.aparelhos.ativado} isValor />
                   </td>
                   {!hidePremiacao && (
@@ -314,7 +332,7 @@ export function TeamDashboard({
               ))}
               {members.length === 0 && (
                 <tr>
-                  <td colSpan={hidePremiacao ? 7 : 8} className="py-4 text-center text-ink-dim">
+                  <td colSpan={hidePremiacao ? 8 : 9} className="py-4 text-center text-ink-dim">
                     Nenhum colaborador nesta equipe ainda.
                   </td>
                 </tr>

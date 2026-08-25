@@ -6,6 +6,7 @@ import { fmtBRL, fmtNum } from "../../lib/format";
 import type { EvolutionSeries, PainelColaborador } from "../../lib/premiacao-types";
 import { PeriodFilterForm } from "../../components/PeriodFilterForm";
 import { FrenteEvolutionChart, COR_LANCADOS, COR_ATIVADOS } from "../../components/TeamDashboard";
+import { maskDocumento } from "../../lib/cnpj";
 
 interface SaleItem {
   id: string;
@@ -30,10 +31,6 @@ interface DetailResponse {
   painel: PainelColaborador;
   sales: Sale[];
   evolution: EvolutionSeries;
-}
-
-function maskCnpjDisplay(digits: string) {
-  return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
 }
 
 // Cada frente tem sua própria régua de faixas, então somar os pontos das 3
@@ -110,10 +107,11 @@ export default function SupervisorColaboradorDetailPage() {
 
       <PeriodFilterForm />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <FrenteCard icon="📱" label="RENOV. MV" lancado={painel.lancado.ptsMV} ativado={painel.ativado.ptsMV} />
         <FrenteCard icon="🔄" label="RENOV. FB/AVA" lancado={painel.lancado.ptsFBAVA} ativado={painel.ativado.ptsFBAVA} />
         <FrenteCard icon="🚀" label="ALTAS" lancado={painel.lancado.ptsAltas} ativado={painel.ativado.ptsAltas} />
+        <FrenteCard icon="🧑" label="ALTAS PF" lancado={painel.lancado.ptsAltasPF} ativado={painel.ativado.ptsAltasPF} />
         <FrenteCard
           icon="💰"
           label="Aparelhos"
@@ -163,6 +161,11 @@ export default function SupervisorColaboradorDetailPage() {
               data={data.evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas }))}
             />
             <FrenteEvolutionChart
+              title="ALTAS PF"
+              icon="🧑"
+              data={data.evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas_pf }))}
+            />
+            <FrenteEvolutionChart
               title="Aparelhos"
               icon="💰"
               data={data.evolution.points.map((p) => ({ bucket: p.bucket, ...p.aparelhos }))}
@@ -178,7 +181,7 @@ export default function SupervisorColaboradorDetailPage() {
           {data.sales.length > 0 && (
             <input
               className="input py-1.5 text-sm max-w-xs"
-              placeholder="Buscar por cliente ou CNPJ..."
+              placeholder="Buscar por cliente, CNPJ ou CPF..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
             />
@@ -190,7 +193,7 @@ export default function SupervisorColaboradorDetailPage() {
             <thead>
               <tr className="text-left text-ink-dim text-xs uppercase">
                 <th className="py-2 pr-3">Cliente</th>
-                <th className="py-2 pr-3">CNPJ</th>
+                <th className="py-2 pr-3">CNPJ/CPF</th>
                 <th className="py-2 pr-3">Data</th>
                 <th className="py-2 pr-3">Produtos</th>
                 <th className="py-2 pr-3">Status</th>
@@ -227,7 +230,7 @@ export default function SupervisorColaboradorDetailPage() {
                           <span className="font-semibold truncate">{sale.clienteNome}</span>
                         </div>
                       </td>
-                      <td className="py-2 pr-3 text-ink-dim whitespace-nowrap">{maskCnpjDisplay(sale.clienteCnpj)}</td>
+                      <td className="py-2 pr-3 text-ink-dim whitespace-nowrap">{maskDocumento(sale.clienteCnpj)}</td>
                       <td className="py-2 pr-3 text-ink-dim whitespace-nowrap">
                         {new Date(sale.createdAt).toLocaleDateString("pt-BR")}
                       </td>

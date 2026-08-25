@@ -13,6 +13,7 @@ export interface CatalogData {
   RENOV_AVA_DADOS: CatalogGroup["items"];
   RENOV_AVA_VOZ: CatalogGroup["items"];
   ALTAS: CatalogGroup[];
+  ALTAS_PF: CatalogGroup[];
 }
 
 export async function getCatalogData(): Promise<CatalogData> {
@@ -27,9 +28,11 @@ export async function getCatalogData(): Promise<CatalogData> {
     RENOV_AVA_DADOS: [],
     RENOV_AVA_VOZ: [],
     ALTAS: [],
+    ALTAS_PF: [],
   };
 
   const altasByCategory = new Map<string, CatalogGroup>();
+  const altasPFByCategory = new Map<string, CatalogGroup>();
 
   for (const item of items) {
     const row = { id: item.id, label: item.label, points: item.points, price: item.price };
@@ -49,9 +52,22 @@ export async function getCatalogData(): Promise<CatalogData> {
         altasByCategory.set(item.categoryId, group);
       }
       group.items.push(row);
+    } else if (item.indicator === "ALTAS_PF" && item.categoryId) {
+      let group = altasPFByCategory.get(item.categoryId);
+      if (!group) {
+        group = {
+          categoryId: item.categoryId,
+          categoryName: item.categoryName,
+          categoryIcon: item.categoryIcon,
+          items: [],
+        };
+        altasPFByCategory.set(item.categoryId, group);
+      }
+      group.items.push(row);
     }
   }
 
   data.ALTAS = Array.from(altasByCategory.values());
+  data.ALTAS_PF = Array.from(altasPFByCategory.values());
   return data;
 }

@@ -35,3 +35,49 @@ export function isValidCnpj(value: string): boolean {
 
   return cnpj === base12 + String(digit1) + String(digit2);
 }
+
+export function maskCpf(value: string): string {
+  const d = onlyDigits(value).slice(0, 11);
+  return d
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d)/, ".$1-$2");
+}
+
+// Validação de dígito verificador do CPF — usado nas vendas ALTAS_PF
+// (Pessoa Física), que identificam o cliente por CPF em vez de CNPJ.
+export function isValidCpf(value: string): boolean {
+  const cpf = onlyDigits(value);
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+
+  const calcCheckDigit = (base: string) => {
+    const factorStart = base.length + 1;
+    const sum = base
+      .split("")
+      .reduce((acc, digit, idx) => acc + Number(digit) * (factorStart - idx), 0);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+
+  const base9 = cpf.slice(0, 9);
+  const digit1 = calcCheckDigit(base9);
+  const digit2 = calcCheckDigit(base9 + digit1);
+
+  return cpf === base9 + String(digit1) + String(digit2);
+}
+
+// Formata um documento (CPF ou CNPJ) já salvo em texto puro de dígitos,
+// detectando o formato pelo tamanho — usado nas telas de acompanhamento
+// (Master/Supervisor), que exibem vendas de ambos os tipos lado a lado.
+export function maskDocumento(digits: string): string {
+  const d = onlyDigits(digits);
+  if (d.length === 11) return maskCpf(d);
+  if (d.length === 14)
+    return d
+      .replace(/^(\d{2})(\d)/, "$1.$2")
+      .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+      .replace(/\.(\d{3})(\d)/, ".$1/$2")
+      .replace(/(\d{4})(\d)/, "$1-$2");
+  return d;
+}
