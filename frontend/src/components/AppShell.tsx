@@ -10,6 +10,7 @@ interface ImpersonateCandidato {
   email: string;
   role: Role;
   active: boolean;
+  isContaTeste: boolean;
 }
 
 // Nomeados "Exemplo" pelo seed (contas de teste) — aparecem primeiro na lista,
@@ -49,7 +50,11 @@ export function AppShell({
     api
       .get<{ users: ImpersonateCandidato[] }>("/api/master/usuarios")
       .then((d) =>
-        setCandidatos(d.users.filter((u) => (u.role === "SUPERVISOR" || u.role === "COLABORADOR") && u.active).sort(ordenarCandidatos))
+        setCandidatos(
+          d.users
+            .filter((u) => (u.role === "SUPERVISOR" || u.role === "COLABORADOR") && u.active && u.isContaTeste)
+            .sort(ordenarCandidatos)
+        )
       )
       .catch(() => setCandidatos([]))
       .finally(() => setLoadingCandidatos(false));
@@ -138,10 +143,10 @@ export function AppShell({
                     <div className="fixed inset-0 z-20" onClick={() => setMenuOpen(false)} />
                     <div className="absolute left-0 top-full mt-2 w-72 card p-3 z-30 shadow-xl flex flex-col gap-3 normal-case">
                       <div>
-                        <p className="text-xs font-bold text-ink-dim uppercase tracking-wide mb-1">Ver como Supervisor</p>
+                        <p className="text-xs font-bold text-ink-dim uppercase tracking-wide mb-1">Ver como Supervisor (teste)</p>
                         {loadingCandidatos && <p className="text-xs text-ink-dim">Carregando...</p>}
                         {!loadingCandidatos && supervisores.length === 0 && (
-                          <p className="text-xs text-ink-dim">Nenhum Supervisor ativo encontrado.</p>
+                          <p className="text-xs text-ink-dim">Nenhum Supervisor de teste encontrado.</p>
                         )}
                         <ul className="flex flex-col gap-0.5 max-h-32 overflow-y-auto">
                           {supervisores.map((c) => (
@@ -160,10 +165,10 @@ export function AppShell({
                         </ul>
                       </div>
                       <div>
-                        <p className="text-xs font-bold text-ink-dim uppercase tracking-wide mb-1">Ver como Colaborador</p>
+                        <p className="text-xs font-bold text-ink-dim uppercase tracking-wide mb-1">Ver como Colaborador (teste)</p>
                         {loadingCandidatos && <p className="text-xs text-ink-dim">Carregando...</p>}
                         {!loadingCandidatos && colaboradores.length === 0 && (
-                          <p className="text-xs text-ink-dim">Nenhum Colaborador ativo encontrado.</p>
+                          <p className="text-xs text-ink-dim">Nenhum Colaborador de teste encontrado.</p>
                         )}
                         <ul className="flex flex-col gap-0.5 max-h-32 overflow-y-auto">
                           {colaboradores.map((c) => (

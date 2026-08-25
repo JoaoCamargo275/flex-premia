@@ -75,6 +75,7 @@ masterRouter.get("/usuarios", async (_req, res) => {
       teamId: u.teamId,
       teamName: u.team?.name ?? null,
       passwordResetRequested: u.passwordResetRequested,
+      isContaTeste: ehContaDeTeste(u.email),
     })),
   });
 });
@@ -185,12 +186,22 @@ masterRouter.delete("/usuarios/:id", async (req: AuthedRequest, res) => {
   }
 });
 
+// Domínio de e-mail usado exclusivamente pelas contas de teste (seed) —
+// "Supervisor Exemplo" e "Colaborador Exemplo". Todo usuário real da
+// plataforma usa o domínio da empresa (@flexsolucoes.net), então isso
+// distingue contas de teste sem precisar de um campo novo no schema.
+const DOMINIO_CONTA_TESTE = "@flexpremia.local";
+
+function ehContaDeTeste(email: string) {
+  return email.toLowerCase().endsWith(DOMINIO_CONTA_TESTE);
+}
+
 // "Ver como" — permite que um Master troque a própria sessão por uma sessão
-// de um Supervisor ou Colaborador existente, só pra facilitar testar as
-// funcionalidades de cada visão (ex.: os logins "Supervisor Exemplo" /
-// "Colaborador Exemplo" criados pelo seed). O front guarda o token do Master
-// à parte e mostra um jeito de voltar — aqui só emite um token novo, igual
-// ao login normal, pro usuário-alvo (que precisa estar ativo).
+// de um Supervisor ou Colaborador de TESTE (ex.: os logins "Supervisor
+// Exemplo" / "Colaborador Exemplo" criados pelo seed) — nunca por uma conta
+// real que registra vendas de verdade. O front guarda o token do Master à
+// parte e mostra um jeito de voltar — aqui só emite um token novo, igual ao
+// login normal, pro usuário-alvo (que precisa estar ativo e ser de teste).
 masterRouter.post("/impersonate/:id", async (req: AuthedRequest, res) => {
   try {
     const alvo = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
@@ -198,6 +209,9 @@ masterRouter.post("/impersonate/:id", async (req: AuthedRequest, res) => {
     if (!alvo.active) throw new Error("Este usuário está inativo.");
     if (alvo.role !== "SUPERVISOR" && alvo.role !== "COLABORADOR") {
       throw new Error("Só é possível visualizar como Supervisor ou Colaborador.");
+    }
+    if (!ehContaDeTeste(alvo.email)) {
+      throw new Error("Só é possível visualizar como uma conta de teste, não uma conta real de uso da plataforma.");
     }
 
     const token = signToken({
