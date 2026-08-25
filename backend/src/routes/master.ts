@@ -6,6 +6,7 @@ import { getTeamOverview } from "../lib/team-overview";
 import { getPainelColaborador, getProdutosPorFrente } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 import { gerarSenhaTemporaria } from "../lib/temp-password";
+import { signToken } from "../auth/jwt";
 import type { Role } from "../lib/types";
 
 export const masterRouter = Router();
@@ -181,6 +182,45 @@ masterRouter.delete("/usuarios/:id", async (req: AuthedRequest, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao excluir usuário." });
+  }
+});
+
+// "Ver como" — permite que um Master troque a própria sessão por uma sessão
+// de um Supervisor ou Colaborador existente, só pra facilitar testar as
+// funcionalidades de cada visão (ex.: os logins "Supervisor Exemplo" /
+// "Colaborador Exemplo" criados pelo seed). O front guarda o token do Master
+// à parte e mostra um jeito de voltar — aqui só emite um token novo, igual
+// ao login normal, pro usuário-alvo (que precisa estar ativo).
+masterRouter.post("/impersonate/:id", async (req: AuthedRequest, res) => {
+  try {
+    const alvo = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+    if (!alvo) throw new Error("Usuário não encontrado.");
+    if (!alvo.active) throw new Error("Este usuário está inativo.");
+    if (alvo.role !== "SUPERVISOR" && alvo.role !== "COLABORADOR") {
+      throw new Error("Só é possível visualizar como Supervisor ou Colaborador.");
+    }
+
+    const token = signToken({
+      sub: alvo.id,
+      name: alvo.name,
+      email: alvo.email,
+      role: alvo.role as Role,
+      teamId: alvo.teamId,
+    });
+
+    res.json({
+      token,
+      user: {
+        id: alvo.id,
+        name: alvo.name,
+        email: alvo.email,
+        role: alvo.role,
+        teamId: alvo.teamId,
+        mustChangePassword: alvo.mustChangePassword,
+      },
+    });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao trocar de visão." });
   }
 });
 
