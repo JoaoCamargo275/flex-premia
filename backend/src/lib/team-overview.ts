@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { getFaixaTables, getPainelColaborador, type PeriodFilter } from "./aggregate";
+import { getFaixaTables, getPainelColaborador, dentroDoPeriodo, dataConsideradaAtivacao, type PeriodFilter } from "./aggregate";
 
 // Quantidade lançada/ativada de uma frente para um colaborador — usada tanto
 // nos pontos (RENOV. MV/FB-AVA/ALTAS) quanto no valor em R$ de Aparelhos.
@@ -127,24 +127,28 @@ async function getQuantidadesPorFrente(
   return acc;
 }
 
-// Conta como "ativado no período" pela data em que o PRODUTO foi ativado
-// (SaleItem.dataAtivacao, escolhida pelo colaborador em "Minhas vendas"),
-// não pela data em que a venda foi lançada — uma venda lançada num mês
-// pode ter um produto ativado só num mês seguinte.
+// Conta como "ativado no período" pela data CONSIDERADA de ativação (ver
+// dataConsideradaAtivacao em aggregate.ts): normalmente é o mês de registro
+// da venda (se ativado dentro da janela de registro+1 mês), ou o próprio mês
+// de ativação caso ative fora dessa janela.
 async function getTaxaAtivacaoColaboradores(userIds: string[], period: PeriodFilter): Promise<number> {
   if (userIds.length === 0) return 0;
-  const ativos = await prisma.user.count({
+  const range = dateRangeClause(period);
+  const items = await prisma.saleItem.findMany({
     where: {
-      id: { in: userIds },
-      sales: {
-        some: {
-          cancelado: false,
-          items: { some: { ativo: true, ...(dateRangeClause(period) ? { dataAtivacao: dateRangeClause(period) } : {}) } },
-        },
-      },
+      sale: { colaboradorId: { in: userIds }, cancelado: false },
+      ativo: true,
+      ...(range ? { OR: [{ sale: { createdAt: range } }, { dataAtivacao: range }] } : {}),
     },
+    select: { ativo: true, dataAtivacao: true, sale: { select: { colaboradorId: true, createdAt: true } } },
   });
-  return (ativos / userIds.length) * 100;
+
+  const ativos = new Set<string>();
+  for (const it of items) {
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    if (dataConsiderada && dentroDoPeriodo(dataConsiderada, period)) ativos.add(it.sale.colaboradorId);
+  }
+  return (ativos.size / userIds.length) * 100;
 }
 
 async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<KpiTotals> {
@@ -170,22 +174,29 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
     ...periodWhereClause(period),
   };
 
-  // "Venda ativada" aqui = venda com pelo menos um produto ativado DENTRO
-  // do período (SaleItem.dataAtivacao) — independente de quando a venda em
-  // si foi lançada, já que a ativação pode acontecer num mês seguinte.
+  // "Venda ativada" aqui = venda com pelo menos um produto cuja data
+  // CONSIDERADA de ativação caia dentro do período (ver dataConsideradaAtivacao).
   const dataAtivacaoRange = dateRangeClause(period);
-  const [vendasLancadas, vendasAtivadas, quantidades, taxaAtivacaoColaboradores] = await Promise.all([
+  const [vendasLancadas, itemsAtivos, quantidades, taxaAtivacaoColaboradores] = await Promise.all([
     prisma.sale.count({ where }),
-    prisma.sale.count({
+    prisma.saleItem.findMany({
       where: {
-        colaboradorId: { in: userIds },
-        cancelado: false,
-        items: { some: { ativo: true, ...(dataAtivacaoRange ? { dataAtivacao: dataAtivacaoRange } : {}) } },
+        sale: { colaboradorId: { in: userIds }, cancelado: false },
+        ativo: true,
+        ...(dataAtivacaoRange ? { OR: [{ sale: { createdAt: dataAtivacaoRange } }, { dataAtivacao: dataAtivacaoRange } ] } : {}),
       },
+      select: { saleId: true, ativo: true, dataAtivacao: true, sale: { select: { createdAt: true } } },
     }),
     getQuantidadesPorFrente(userIds, period),
     getTaxaAtivacaoColaboradores(userIds, period),
   ]);
+
+  const vendasAtivadasIds = new Set<string>();
+  for (const it of itemsAtivos) {
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    if (dataConsiderada && dentroDoPeriodo(dataConsiderada, period)) vendasAtivadasIds.add(it.saleId);
+  }
+  const vendasAtivadas = vendasAtivadasIds.size;
 
   let premiacaoEstimada = 0;
   let pontosAtivos = 0;
@@ -345,8 +356,9 @@ export async function getEvolutionSeries(userIds: string[], period: PeriodFilter
       ensureBucket(key, label);
       points.get(key)![frente].lancado += valor;
     }
-    if (item.ativo && item.dataAtivacao && item.dataAtivacao >= from && item.dataAtivacao <= to) {
-      const { key, label } = keyForDate(item.dataAtivacao);
+    const dataConsiderada = dataConsideradaAtivacao(item.sale.createdAt, item.ativo, item.dataAtivacao);
+    if (dataConsiderada && dataConsiderada >= from && dataConsiderada <= to) {
+      const { key, label } = keyForDate(dataConsiderada);
       ensureBucket(key, label);
       points.get(key)![frente].ativado += valor;
     }

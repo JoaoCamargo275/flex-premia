@@ -77,19 +77,35 @@ function rangeDoPeriodo(period: PeriodFilter) {
   return { ...(period.from ? { gte: period.from } : {}), ...(period.to ? { lte: period.to } : {}) };
 }
 
-function dentroDoPeriodo(d: Date | null, period: PeriodFilter): boolean {
+export function dentroDoPeriodo(d: Date | null, period: PeriodFilter): boolean {
   if (!d) return false;
   if (period.from && d < period.from) return false;
   if (period.to && d > period.to) return false;
   return true;
 }
 
-// "Lançado" conta pela data em que a venda foi registrada (Sale.createdAt,
-// que o colaborador pode escolher em "Nova venda"). "Ativado" conta pela
-// data em que o PRODUTO foi de fato ativado (SaleItem.dataAtivacao, também
-// escolhida pelo colaborador) — são datas independentes, então um item pode
-// contar como lançado num período e como ativado em outro (ex.: vendido em
-// julho, ativado em agosto).
+// Toda venda tem o próprio mês de registro (Sale.createdAt) e o mês seguinte
+// como prazo para ativação — ativando dentro dessa janela de 2 meses, o
+// item conta para o resultado do MÊS DE REGISTRO (mesmo se ativado só no mês
+// seguinte). Ex.: vendido em agosto e ativado em agosto OU setembro → conta
+// pra agosto. Se ativar fora dessa janela (2+ meses depois do registro), o
+// item passa a contar pelo próprio mês em que foi ativado (comportamento
+// "solto", igual ao de antes dessa regra).
+// Devolve a data a usar nos filtros de período pro "ativado", ou null se o
+// item não está ativo (não conta pra ativado em período nenhum).
+export function dataConsideradaAtivacao(
+  saleCreatedAt: Date,
+  ativo: boolean,
+  dataAtivacao: Date | null
+): Date | null {
+  if (!ativo || !dataAtivacao) return null;
+  const regMonthIndex = saleCreatedAt.getFullYear() * 12 + saleCreatedAt.getMonth();
+  const actMonthIndex = dataAtivacao.getFullYear() * 12 + dataAtivacao.getMonth();
+  const diff = actMonthIndex - regMonthIndex;
+  if (diff === 0 || diff === 1) return saleCreatedAt;
+  return dataAtivacao;
+}
+
 async function sumPontosPorIndicador(
   colaboradorId: string,
   period: PeriodFilter
@@ -116,7 +132,8 @@ async function sumPontosPorIndicador(
 
   for (const it of items) {
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const contaAtivado = it.ativo && (!range || dentroDoPeriodo(it.dataAtivacao, period));
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (contaLancado) somarNoAcc(lancado, it.indicator, it.pointsTotal, it.valorReais);
     if (contaAtivado) somarNoAcc(ativado, it.indicator, it.pointsTotal, it.valorReais);
   }
@@ -194,7 +211,7 @@ export async function getProdutosPorFrente(
   const range = rangeDoPeriodo(period);
 
   // Mesma regra do painel: "lançado" pela data da venda, "ativado" pela
-  // data de ativação do produto — datas independentes, um item pode entrar
+  // data considerada de ativação (ver dataConsideradaAtivacao) — um item pode entrar
   // no lançado de um período e no ativado de outro.
   const items = await prisma.saleItem.findMany({
     where: {
@@ -225,7 +242,8 @@ export async function getProdutosPorFrente(
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const contaAtivado = it.ativo && (!range || dentroDoPeriodo(it.dataAtivacao, period));
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (!contaLancado && !contaAtivado) continue;
 
     const map = maps[frente];
