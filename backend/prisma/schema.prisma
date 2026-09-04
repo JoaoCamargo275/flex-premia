@@ -58,6 +58,8 @@ model User {
   statusChanges SaleItemStatusHistory[] @relation("StatusChangedBy")
   attendanceFlags AttendanceFlag[] @relation("AttendanceFlagUser")
   attendanceFlagsSetBy AttendanceFlag[] @relation("AttendanceFlagSetBy")
+  metas        Meta[]   @relation("MetaColaborador")
+  metasDefinidas Meta[] @relation("MetaDefinidaPor")
 
   createdAt    DateTime @default(now())
 }
@@ -173,4 +175,27 @@ model AttendanceFlag {
   createdAt     DateTime @default(now())
 
   @@unique([userId, yearMonth])
+}
+
+// Meta de vendas de um colaborador numa das 3 frentes principais (RENOV MV,
+// ALTAS PJ, Aparelhos) — definida pelo Supervisor. É um "padrão fixo": um
+// único registro por colaborador/frente, que vale até o Supervisor editar
+// de novo (não é redefinida mês a mês). O progresso é sempre contado pelas
+// vendas LANÇADAS (não pelas ativadas) — ver src/lib/metas.ts.
+//   frente: "mv" | "altas" | "aparelhos"
+//   metaDiaria/metaSemanal/metaMensal: pontos (mv/altas) ou R$ (aparelhos)
+model Meta {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation("MetaColaborador", fields: [userId], references: [id])
+  frente        String
+  metaDiaria    Float    @default(0)
+  metaSemanal   Float    @default(0)
+  metaMensal    Float    @default(0)
+  definidaPorId String
+  definidaPor   User     @relation("MetaDefinidaPor", fields: [definidaPorId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, frente])
 }

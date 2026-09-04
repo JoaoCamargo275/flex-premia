@@ -6,6 +6,7 @@ import { getTeamOverview, getEvolutionSeries } from "../lib/team-overview";
 import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 import { gerarSenhaTemporaria } from "../lib/temp-password";
+import { FRENTES_META, getMetasDoColaborador, setMetasDoColaborador, isFrenteMeta, type MetaValores } from "../lib/metas";
 
 export const supervisorRouter = Router();
 
@@ -54,6 +55,46 @@ supervisorRouter.get("/colaboradores/:id", async (req: AuthedRequest, res) => {
     sales,
     evolution,
   });
+});
+
+// Metas (RENOV MV, ALTAS PJ, Aparelhos) do colaborador — "padrão fixo" que
+// vale até o Supervisor editar de novo (não é redefinida mês a mês).
+supervisorRouter.get("/colaboradores/:id/metas", async (req: AuthedRequest, res) => {
+  const team = await prisma.team.findUnique({ where: { supervisorId: req.user!.sub } });
+  const colaborador = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+  if (!team || !colaborador || colaborador.teamId !== team.id) {
+    res.status(404).json({ error: "Colaborador não encontrado." });
+    return;
+  }
+  const metas = await getMetasDoColaborador(colaborador.id);
+  res.json({ metas });
+});
+
+supervisorRouter.put("/colaboradores/:id/metas", async (req: AuthedRequest, res) => {
+  try {
+    const team = await prisma.team.findUnique({ where: { supervisorId: req.user!.sub } });
+    const colaborador = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+    if (!team || !colaborador || colaborador.teamId !== team.id) {
+      throw new Error("Colaborador não encontrado.");
+    }
+
+    const body = req.body as Partial<Record<string, MetaValores>>;
+    const valores: Partial<Record<(typeof FRENTES_META)[number], MetaValores>> = {};
+    for (const [frente, v] of Object.entries(body)) {
+      if (!isFrenteMeta(frente) || !v) continue;
+      valores[frente] = {
+        metaDiaria: Number(v.metaDiaria) || 0,
+        metaSemanal: Number(v.metaSemanal) || 0,
+        metaMensal: Number(v.metaMensal) || 0,
+      };
+    }
+
+    await setMetasDoColaborador(colaborador.id, req.user!.sub, valores);
+    const metas = await getMetasDoColaborador(colaborador.id);
+    res.json({ metas });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao salvar metas." });
+  }
 });
 
 supervisorRouter.get("/colaboradores", async (req: AuthedRequest, res) => {

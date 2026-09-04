@@ -47,7 +47,7 @@ function parseIso(value: string): { y: number; m: number; d: number } | null {
   return { y, m: m - 1, d };
 }
 
-function DateCalendarPicker({
+export function DateCalendarPicker({
   label,
   value,
   onChange,

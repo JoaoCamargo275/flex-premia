@@ -6,6 +6,7 @@ import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 
 import ColaboradorLayout from "./pages/colaborador/ColaboradorLayout";
 import MeuPainelPage from "./pages/colaborador/MeuPainelPage";
+import MetasPage from "./pages/colaborador/MetasPage";
 import NovaVendaPage from "./pages/colaborador/NovaVendaPage";
 import MinhasVendasPage from "./pages/colaborador/MinhasVendasPage";
 
@@ -38,6 +39,7 @@ export default function App() {
           <Route element={<ProtectedRoute allowedRoles={["COLABORADOR"]} />}>
             <Route element={<ColaboradorLayout />}>
               <Route path="/colaborador" element={<MeuPainelPage />} />
+              <Route path="/colaborador/metas" element={<MetasPage />} />
               <Route path="/colaborador/nova-venda" element={<NovaVendaPage />} />
               <Route path="/colaborador/vendas" element={<MinhasVendasPage />} />
             </Route>

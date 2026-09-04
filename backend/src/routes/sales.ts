@@ -5,6 +5,7 @@ import { isValidCnpj, isValidCpf, onlyDigits } from "../lib/cnpj";
 import type { Indicator } from "../lib/types";
 import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
+import { getMetasProgresso } from "../lib/metas";
 
 export const salesRouter = Router();
 
@@ -56,6 +57,16 @@ salesRouter.get("/painel", async (req: AuthedRequest, res) => {
   const period = parsePeriod(req.query);
   const painel = await getPainelColaborador(req.user!.sub, period);
   res.json(painel);
+});
+
+// Aba "Metas" do colaborador — progresso de hoje/semana/mês nas 3 frentes
+// com meta (RENOV MV, ALTAS PJ, Aparelhos), sempre contado pelas vendas
+// lançadas. "from"/"to" definem o mês (mesmo seletor da aba "Meu painel");
+// hoje/semana são sempre em relação a agora.
+salesRouter.get("/metas", async (req: AuthedRequest, res) => {
+  const period = parsePeriod(req.query);
+  const resumo = await getMetasProgresso(req.user!.sub, period);
+  res.json(resumo);
 });
 
 salesRouter.get("/", async (req: AuthedRequest, res) => {

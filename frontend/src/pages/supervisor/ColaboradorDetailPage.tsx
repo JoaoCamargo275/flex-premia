@@ -6,6 +6,7 @@ import { fmtBRL, fmtNum } from "../../lib/format";
 import type { EvolutionSeries, PainelColaborador } from "../../lib/premiacao-types";
 import { PeriodFilterForm } from "../../components/PeriodFilterForm";
 import { FrenteEvolutionChart, COR_LANCADOS, COR_ATIVADOS } from "../../components/TeamDashboard";
+import { MetasEditor } from "../../components/MetasEditor";
 import { maskDocumento } from "../../lib/cnpj";
 
 interface SaleItem {
@@ -120,6 +121,8 @@ export default function SupervisorColaboradorDetailPage() {
           isValor
         />
       </div>
+
+      {id && <MetasEditor colaboradorId={id} />}
 
       <div className="card p-4">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">

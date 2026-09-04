@@ -11,6 +11,7 @@ export default function ColaboradorLayout() {
         headerExtra={<MonthYearBadgePicker />}
         links={[
           { href: "/colaborador", label: "Meu painel" },
+          { href: "/colaborador/metas", label: "Metas" },
           { href: "/colaborador/nova-venda", label: "Nova venda" },
           { href: "/colaborador/vendas", label: "Minhas vendas" },
         ]}
