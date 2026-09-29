@@ -31,6 +31,15 @@ export default function SupervisorOverviewPage() {
     }
   }
 
+  async function exportFechamento() {
+    try {
+      const qs = searchParams.toString();
+      await downloadFile(`/api/supervisor/fechamento${qs ? `?${qs}` : ""}`, "fechamento-equipe.xlsx");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao exportar fechamento.");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -38,9 +47,14 @@ export default function SupervisorOverviewPage() {
           <h1 className="text-xl font-bold">Visão geral da equipe</h1>
           <p className="text-sm text-ink-dim">{data?.team?.name ?? "Equipe"} — acompanhamento somente leitura.</p>
         </div>
-        <button onClick={exportCsv} className="btn-grad text-sm">
-          Exportar CSV
-        </button>
+        <div className="flex gap-2">
+          <button onClick={exportFechamento} className="btn-grad text-sm">
+            Exportar fechamento (Excel)
+          </button>
+          <button onClick={exportCsv} className="btn-grad text-sm">
+            Exportar CSV
+          </button>
+        </div>
       </div>
       <PeriodFilterForm />
       {error && <p className="text-sm text-accent-3">{error}</p>}

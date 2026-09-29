@@ -6,6 +6,7 @@ import { getTeamOverview } from "../lib/team-overview";
 import { getPainelColaborador, getProdutosPorFrente } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 import { gerarSenhaTemporaria } from "../lib/temp-password";
+import { buildFechamentoMasterXlsx, nomeArquivoSeguro } from "../lib/fechamento";
 import { signToken } from "../auth/jwt";
 import type { Role } from "../lib/types";
 
@@ -25,6 +26,24 @@ masterRouter.get("/overview", async (req: AuthedRequest, res) => {
   const overview = await getTeamOverview(memberIds, period);
 
   res.json({ teams: teams.map((t) => ({ id: t.id, name: t.name })), overview });
+});
+
+// Fechamento de todas as equipes em Excel (.xlsx) — uma aba "Resumo" com o
+// total por frente de cada equipe, e uma aba por equipe listando os
+// colaboradores dela com os mesmos pontos ativados por frente que o
+// Supervisor já vê no fechamento dele (sem cálculo novo, sem trava). Aceita
+// ?teamId= pra restringir a uma equipe só (mesmo filtro da tela de overview).
+masterRouter.get("/fechamento", async (req: AuthedRequest, res) => {
+  try {
+    const period = parsePeriod(req.query);
+    const teamId = typeof req.query.teamId === "string" && req.query.teamId ? req.query.teamId : undefined;
+    const { buffer } = await buildFechamentoMasterXlsx(period, teamId);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", 'attachment; filename="fechamento-equipes.xlsx"');
+    res.send(buffer);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao gerar fechamento." });
+  }
 });
 
 masterRouter.get("/colaboradores/:id", async (req: AuthedRequest, res) => {

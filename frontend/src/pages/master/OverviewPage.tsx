@@ -31,6 +31,15 @@ export default function MasterOverviewPage() {
     }
   }
 
+  async function exportFechamento() {
+    try {
+      const qs = searchParams.toString();
+      await downloadFile(`/api/master/fechamento${qs ? `?${qs}` : ""}`, "fechamento-equipes.xlsx");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao exportar fechamento.");
+    }
+  }
+
   function handleTeamChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = new URLSearchParams(searchParams);
     if (e.target.value) next.set("teamId", e.target.value);
@@ -45,9 +54,14 @@ export default function MasterOverviewPage() {
           <h1 className="text-xl font-bold">Visão geral — todas as equipes</h1>
           <p className="text-sm text-ink-dim">Consolidado global, com filtro por equipe.</p>
         </div>
-        <button onClick={exportCsv} className="btn-grad text-sm">
-          Exportar CSV
-        </button>
+        <div className="flex gap-2">
+          <button onClick={exportFechamento} className="btn-grad text-sm">
+            Exportar fechamento (Excel)
+          </button>
+          <button onClick={exportCsv} className="btn-grad text-sm">
+            Exportar CSV
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-3">

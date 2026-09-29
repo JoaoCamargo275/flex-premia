@@ -7,6 +7,7 @@ import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 import { gerarSenhaTemporaria } from "../lib/temp-password";
 import { FRENTES_META, getMetasDoColaborador, setMetasDoColaborador, isFrenteMeta, type MetaValores } from "../lib/metas";
+import { buildFechamentoSupervisorXlsx, nomeArquivoSeguro } from "../lib/fechamento";
 
 export const supervisorRouter = Router();
 
@@ -94,6 +95,21 @@ supervisorRouter.put("/colaboradores/:id/metas", async (req: AuthedRequest, res)
     res.json({ metas });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao salvar metas." });
+  }
+});
+
+// Fechamento da equipe em Excel (.xlsx) — uma aba "Resumo" com o total por
+// frente de cada colaborador, e uma aba por colaborador com o detalhe das
+// vendas ATIVADAS no período (mesmo filtro de data usado no resto do app).
+supervisorRouter.get("/fechamento", async (req: AuthedRequest, res) => {
+  try {
+    const period = parsePeriod(req.query);
+    const { buffer, teamName } = await buildFechamentoSupervisorXlsx(req.user!.sub, period);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename="fechamento-${nomeArquivoSeguro(teamName)}.xlsx"`);
+    res.send(buffer);
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : "Erro ao gerar fechamento." });
   }
 });
 
