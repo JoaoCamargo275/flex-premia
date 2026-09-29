@@ -190,6 +190,23 @@ function tituloRow(sheet: ExcelJS.Worksheet, texto: string) {
   row.font = { bold: true, size: 14 };
 }
 
+// Liga as setinhas de filtro do Excel (AutoFiltro) no cabeçalho de uma
+// tabela — cobre só as linhas de dado (headerRowNumber até lastDataRowNumber),
+// sem incluir a linha de total logo abaixo. Cada aba só pode ter UM
+// autoFiltro, então cada função abaixo escolhe a tabela principal da aba.
+function ativarAutoFiltro(
+  sheet: ExcelJS.Worksheet,
+  headerRowNumber: number,
+  lastDataRowNumber: number,
+  columnCount: number
+) {
+  if (lastDataRowNumber < headerRowNumber) return;
+  sheet.autoFilter = {
+    from: { row: headerRowNumber, column: 1 },
+    to: { row: lastDataRowNumber, column: columnCount },
+  };
+}
+
 function addResumoColaboradoresSheet(
   workbook: ExcelJS.Workbook,
   titulo: string,
@@ -200,7 +217,7 @@ function addResumoColaboradoresSheet(
   tituloRow(sheet, titulo);
   sheet.addRow([subtitulo]);
   sheet.addRow([]);
-  headerRow(sheet, [
+  const header = headerRow(sheet, [
     "Colaborador",
     FRENTE_LABELS.mv,
     FRENTE_LABELS.fbava,
@@ -208,6 +225,7 @@ function addResumoColaboradoresSheet(
     FRENTE_LABELS.altas_pf,
     FRENTE_LABELS.aparelhos,
   ]);
+  const headerRowNumber = header.number;
 
   for (const c of colaboradores) {
     const row = sheet.addRow([
@@ -220,6 +238,8 @@ function addResumoColaboradoresSheet(
     ]);
     row.getCell(6).numFmt = MOEDA_FMT;
   }
+  const lastDataRowNumber = sheet.rowCount;
+  ativarAutoFiltro(sheet, headerRowNumber, lastDataRowNumber, 6);
 
   const totalRow = sheet.addRow([
     "TOTAL DA EQUIPE",
@@ -257,7 +277,7 @@ function addColaboradorSheet(
   sheet.addRow([]);
   sheet.addRow(["Vendas ativadas no período"]).font = { bold: true };
 
-  headerRow(sheet, [
+  const detailHeader = headerRow(sheet, [
     "Cliente",
     "CNPJ/CPF",
     "Data da venda",
@@ -268,6 +288,7 @@ function addColaboradorSheet(
     "Pontos",
     "Valor (R$)",
   ]);
+  const detailHeaderRowNumber = detailHeader.number;
 
   for (const v of c.vendas) {
     const row = sheet.addRow([
@@ -288,6 +309,8 @@ function addColaboradorSheet(
 
   if (c.vendas.length === 0) {
     sheet.addRow(["Nenhuma venda ativada nesse período."]);
+  } else {
+    ativarAutoFiltro(sheet, detailHeaderRowNumber, sheet.rowCount, 9);
   }
 
   const widths = [28, 20, 14, 16, 18, 28, 8, 10, 14];
@@ -336,7 +359,7 @@ function addResumoEquipesSheet(
   tituloRow(sheet, "Fechamento — todas as equipes");
   sheet.addRow([subtitulo]);
   sheet.addRow([]);
-  headerRow(sheet, [
+  const header = headerRow(sheet, [
     "Equipe",
     "Supervisor",
     FRENTE_LABELS.mv,
@@ -345,6 +368,7 @@ function addResumoEquipesSheet(
     FRENTE_LABELS.altas_pf,
     FRENTE_LABELS.aparelhos,
   ]);
+  const headerRowNumber = header.number;
 
   for (const eq of equipes) {
     const row = sheet.addRow([
@@ -358,6 +382,7 @@ function addResumoEquipesSheet(
     ]);
     row.getCell(7).numFmt = MOEDA_FMT;
   }
+  ativarAutoFiltro(sheet, headerRowNumber, sheet.rowCount, 7);
 
   const totalRow = sheet.addRow([
     "TOTAL GERAL",
@@ -389,7 +414,7 @@ function addEquipeSheet(
   sheet.addRow([`Supervisor: ${supervisorNome}`]);
   sheet.addRow([periodoLabel(period)]);
   sheet.addRow([]);
-  headerRow(sheet, [
+  const header = headerRow(sheet, [
     "Colaborador",
     FRENTE_LABELS.mv,
     FRENTE_LABELS.fbava,
@@ -397,6 +422,7 @@ function addEquipeSheet(
     FRENTE_LABELS.altas_pf,
     FRENTE_LABELS.aparelhos,
   ]);
+  const headerRowNumber = header.number;
 
   for (const c of colaboradores) {
     const row = sheet.addRow([
@@ -412,6 +438,8 @@ function addEquipeSheet(
 
   if (colaboradores.length === 0) {
     sheet.addRow(["Nenhum colaborador nessa equipe."]);
+  } else {
+    ativarAutoFiltro(sheet, headerRowNumber, sheet.rowCount, 6);
   }
 
   const totalRow = sheet.addRow([
