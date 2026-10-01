@@ -109,6 +109,13 @@ export interface VendaAtivadaRow {
 
 // Itens ATIVADOS (contam ponto) de um colaborador dentro do período, com o
 // detalhe de cliente/produto/datas — usado na aba de detalhe do fechamento.
+//
+// Valor (R$) do item: pra Aparelhos já vem gravado em SaleItem.valorReais
+// (é o valor digitado na hora da venda). Pra ALTAS PJ não tem um valor
+// congelado na venda — usa o preço cadastrado no catálogo (CatalogItem.price)
+// vezes a quantidade. As demais frentes (RENOV. MV/FB/AVA e ALTAS PF) não
+// mostram valor aqui — só pontos (pedido explícito: só ALTAS PJ e Aparelhos
+// têm valor em R$ relevante pro fechamento).
 export async function getVendasAtivadasDetalhadas(
   colaboradorId: string,
   period: PeriodFilter
@@ -126,6 +133,7 @@ export async function getVendasAtivadasDetalhadas(
       valorReais: true,
       ativo: true,
       dataAtivacao: true,
+      catalogItem: { select: { price: true } },
       sale: { select: { clienteNome: true, clienteCnpj: true, createdAt: true } },
     },
   });
@@ -136,6 +144,12 @@ export async function getVendasAtivadasDetalhadas(
     if (!dataConsiderada || !dentroDoPeriodo(dataConsiderada, period)) continue;
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;
+
+    let valor = it.valorReais; // já vem preenchido pra Aparelhos
+    if (frente === "altas" && it.catalogItem?.price != null) {
+      valor = it.catalogItem.price * it.quantity;
+    }
+
     rows.push({
       clienteNome: it.sale.clienteNome,
       clienteCnpj: it.sale.clienteCnpj,
@@ -145,7 +159,7 @@ export async function getVendasAtivadasDetalhadas(
       produto: it.label,
       quantidade: it.quantity,
       pontos: it.pointsTotal,
-      valorReais: it.valorReais,
+      valorReais: valor,
     });
   }
 
@@ -311,6 +325,10 @@ function addColaboradorSheet(
     sheet.addRow(["Nenhuma venda ativada nesse período."]);
   } else {
     ativarAutoFiltro(sheet, detailHeaderRowNumber, sheet.rowCount, 9);
+    const totalValor = sum(c.vendas.map((v) => v.valorReais ?? 0));
+    const totalValorRow = sheet.addRow(["TOTAL DE PRODUTOS VENDIDOS (R$)", "", "", "", "", "", "", "", totalValor]);
+    totalValorRow.font = { bold: true };
+    totalValorRow.getCell(9).numFmt = MOEDA_FMT;
   }
 
   const widths = [28, 20, 14, 16, 18, 28, 8, 10, 14];
