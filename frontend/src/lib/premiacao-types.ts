@@ -77,12 +77,21 @@ export interface MemberFrentes {
   aparelhos: FrenteBreakdown; // valor em R$, não pontos
 }
 
+export interface MemberPremiacaoPorFrente {
+  mv: number;
+  fbava: number;
+  altas: number;
+  altas_pf: number;
+  aparelhos: number;
+}
+
 export interface MemberOverview {
   id: string;
   name: string;
   email: string;
   premiacaoLancada: number;
   premiacaoAtivada: number;
+  premiacaoAtivadaPorFrente: MemberPremiacaoPorFrente;
   faixaAtivada: number;
   frentes: MemberFrentes;
 }
@@ -120,28 +129,11 @@ export interface EvolutionSeries {
   points: EvolutionPoint[];
 }
 
-export interface WeeklyFrenteRow {
-  memberId: string;
-  memberName: string;
-  values: number[]; // alinhado com bucketLabels
-  total: number;
-}
-
-export type FrenteKey = "mv" | "fbava" | "altas" | "altas_pf" | "aparelhos";
-
-export interface WeeklyBreakdown {
-  granularity: "day" | "week";
-  bucketLabels: string[];
-  frentes: Record<FrenteKey, WeeklyFrenteRow[]>;
-  totals: Record<FrenteKey, number[]>;
-}
-
 export interface TeamOverview {
   members: MemberOverview[];
   totals: KpiTotals;
   totalsAnterior: KpiTotals;
   evolution: EvolutionSeries;
-  weeklyBreakdown: WeeklyBreakdown;
 }
 
 export interface ProdutoBreakdownItem {

@@ -122,6 +122,52 @@ export default function SupervisorColaboradorDetailPage() {
         />
       </div>
 
+      <div className="card p-4">
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h2 className="text-sm font-bold">💵 Premiação</h2>
+          <div className="text-right">
+            <div className="text-[.65rem] uppercase tracking-wide text-ink-dim">Premiação ativada (total)</div>
+            <div className="text-xl font-extrabold text-good">{fmtBRL(painel.ativado.premiacaoFinal)}</div>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-ink-dim text-xs uppercase">
+                <th className="py-2 pr-3">Frente</th>
+                <th className="py-2 pr-3 text-right">Premiação (R$)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-white/5">
+                <td className="py-2 pr-3">📱 RENOV. MV</td>
+                <td className="py-2 pr-3 text-right font-semibold">{fmtBRL(painel.ativado.valorMV)}</td>
+              </tr>
+              <tr className="border-t border-white/5">
+                <td className="py-2 pr-3">🔄 RENOV. FB/AVA</td>
+                <td className="py-2 pr-3 text-right font-semibold">{fmtBRL(painel.ativado.bonusFBAVA)}</td>
+              </tr>
+              <tr className="border-t border-white/5">
+                <td className="py-2 pr-3">🚀 ALTAS</td>
+                <td className="py-2 pr-3 text-right font-semibold">{fmtBRL(painel.ativado.valorALTAS)}</td>
+              </tr>
+              <tr className="border-t border-white/5">
+                <td className="py-2 pr-3">🧑 ALTAS PF</td>
+                <td className="py-2 pr-3 text-right font-semibold">{fmtBRL(painel.ativado.bonusAltasPF)}</td>
+              </tr>
+              <tr className="border-t border-white/5">
+                <td className="py-2 pr-3">💰 Aparelhos</td>
+                <td className="py-2 pr-3 text-right font-semibold">{fmtBRL(painel.ativado.bonusAparelhosRS)}</td>
+              </tr>
+              <tr className="border-t border-white/10 font-bold">
+                <td className="py-2 pr-3">Total</td>
+                <td className="py-2 pr-3 text-right text-good">{fmtBRL(painel.ativado.premiacaoFinal)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {id && <MetasEditor colaboradorId={id} />}
 
       <div className="card p-4">
