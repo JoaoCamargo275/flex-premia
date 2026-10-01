@@ -120,11 +120,28 @@ export interface EvolutionSeries {
   points: EvolutionPoint[];
 }
 
+export interface WeeklyFrenteRow {
+  memberId: string;
+  memberName: string;
+  values: number[]; // alinhado com bucketLabels
+  total: number;
+}
+
+export type FrenteKey = "mv" | "fbava" | "altas" | "altas_pf" | "aparelhos";
+
+export interface WeeklyBreakdown {
+  granularity: "day" | "week";
+  bucketLabels: string[];
+  frentes: Record<FrenteKey, WeeklyFrenteRow[]>;
+  totals: Record<FrenteKey, number[]>;
+}
+
 export interface TeamOverview {
   members: MemberOverview[];
   totals: KpiTotals;
   totalsAnterior: KpiTotals;
   evolution: EvolutionSeries;
+  weeklyBreakdown: WeeklyBreakdown;
 }
 
 export interface ProdutoBreakdownItem {

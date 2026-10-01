@@ -128,6 +128,78 @@ export function FrenteEvolutionChart({
   );
 }
 
+// Tabela "tipo planilha" (igual ao que o supervisor já monta manualmente no
+// Excel pra fechar o mês): colaboradores nas linhas, dias/semanas do
+// período nas colunas, com total por colaborador e uma linha "Total geral"
+// no rodapé. Mostra só os pontos/valor ATIVADOS — é a mesma régua usada no
+// resto do painel e no fechamento em Excel.
+function WeeklyFrenteTable({
+  title,
+  icon,
+  bucketLabels,
+  rows,
+  totals,
+  isValor,
+}: {
+  title: string;
+  icon: string;
+  bucketLabels: string[];
+  rows: { memberId: string; memberName: string; values: number[]; total: number }[];
+  totals: number[];
+  isValor?: boolean;
+}) {
+  const fmt = isValor ? fmtBRL : (n: number) => fmtNum(n);
+  const grandTotal = totals.reduce((a, b) => a + b, 0);
+  return (
+    <div className="rounded-xl bg-white/[.02] p-3">
+      <h3 className="text-xs font-bold uppercase tracking-wide text-ink-dim mb-2">
+        {icon} {title}
+      </h3>
+      {bucketLabels.length === 0 || rows.length === 0 ? (
+        <p className="text-sm text-ink-dim">Sem dados no período selecionado.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-ink-dim uppercase">
+                <th className="py-1.5 pr-3">Colaborador</th>
+                {bucketLabels.map((label, i) => (
+                  <th key={i} className="py-1.5 px-2 text-right whitespace-nowrap">
+                    {label}
+                  </th>
+                ))}
+                <th className="py-1.5 pl-2 text-right font-bold">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.memberId} className="border-t border-white/5">
+                  <td className="py-1.5 pr-3 font-semibold">{r.memberName}</td>
+                  {r.values.map((v, i) => (
+                    <td key={i} className="py-1.5 px-2 text-right text-ink-dim">
+                      {v === 0 ? "—" : fmt(v)}
+                    </td>
+                  ))}
+                  <td className="py-1.5 pl-2 text-right font-bold">{fmt(r.total)}</td>
+                </tr>
+              ))}
+              <tr className="border-t border-white/10 font-bold">
+                <td className="py-1.5 pr-3">Total geral</td>
+                {totals.map((v, i) => (
+                  <td key={i} className="py-1.5 px-2 text-right">
+                    {fmt(v)}
+                  </td>
+                ))}
+                <td className="py-1.5 pl-2 text-right">{fmt(grandTotal)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TeamDashboard({
   overview,
   detailBasePath,
@@ -141,7 +213,7 @@ export function TeamDashboard({
   /** Esconde só o tile "Premiação estimada da equipe" (mantém a coluna "Premiação ativada" na tabela) — usado no Master. */
   hidePremiacaoEstimada?: boolean;
 }) {
-  const { totals, totalsAnterior, evolution, members } = overview;
+  const { totals, totalsAnterior, members, weeklyBreakdown } = overview;
 
   const frenteTotais = members.reduce(
     (acc, m) => {
@@ -229,55 +301,52 @@ export function TeamDashboard({
       <div className="card p-4">
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <h2 className="text-sm font-bold">
-            Evolução no período {evolution.granularity === "day" ? "— dia a dia" : "— semana a semana"}
+            Fechamento semanal — pontos/valor ativados por colaborador{" "}
+            {weeklyBreakdown.granularity === "day" ? "(dia a dia)" : "(semana a semana)"}
           </h2>
-          <div className="flex items-center gap-4 text-xs text-ink-dim">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COR_LANCADOS }} />
-              Lançados
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: COR_ATIVADOS }} />
-              Ativados
-            </span>
-          </div>
         </div>
         <p className="text-xs text-ink-dim mb-3">
-          O eixo acompanha o período selecionado no filtro acima — use-o pra ver por dia (períodos de até 31 dias)
-          ou por semana (períodos mais longos).
+          Mesma régua do resto do painel (só conta o que foi ATIVADO dentro do período filtrado acima) — útil pra
+          bater o fechamento colaborador a colaborador.
         </p>
-        {evolution.points.length === 0 ? (
-          <p className="text-sm text-ink-dim">Sem dados no período selecionado.</p>
-        ) : (
-          <div className="grid md:grid-cols-2 gap-4">
-            <FrenteEvolutionChart
-              title="RENOV MV"
-              icon="📱"
-              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.mv }))}
-            />
-            <FrenteEvolutionChart
-              title="RENOV FB/AVA"
-              icon="🔄"
-              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.fbava }))}
-            />
-            <FrenteEvolutionChart
-              title="ALTAS"
-              icon="🚀"
-              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas }))}
-            />
-            <FrenteEvolutionChart
-              title="ALTAS PF"
-              icon="🧑"
-              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.altas_pf }))}
-            />
-            <FrenteEvolutionChart
-              title="Aparelhos"
-              icon="💰"
-              data={evolution.points.map((p) => ({ bucket: p.bucket, ...p.aparelhos }))}
-              isValor
-            />
-          </div>
-        )}
+        <div className="grid gap-4">
+          <WeeklyFrenteTable
+            title="RENOV MV"
+            icon="📱"
+            bucketLabels={weeklyBreakdown.bucketLabels}
+            rows={weeklyBreakdown.frentes.mv}
+            totals={weeklyBreakdown.totals.mv}
+          />
+          <WeeklyFrenteTable
+            title="RENOV FB/AVA"
+            icon="🔄"
+            bucketLabels={weeklyBreakdown.bucketLabels}
+            rows={weeklyBreakdown.frentes.fbava}
+            totals={weeklyBreakdown.totals.fbava}
+          />
+          <WeeklyFrenteTable
+            title="ALTAS"
+            icon="🚀"
+            bucketLabels={weeklyBreakdown.bucketLabels}
+            rows={weeklyBreakdown.frentes.altas}
+            totals={weeklyBreakdown.totals.altas}
+          />
+          <WeeklyFrenteTable
+            title="ALTAS PF"
+            icon="🧑"
+            bucketLabels={weeklyBreakdown.bucketLabels}
+            rows={weeklyBreakdown.frentes.altas_pf}
+            totals={weeklyBreakdown.totals.altas_pf}
+          />
+          <WeeklyFrenteTable
+            title="Aparelhos"
+            icon="💰"
+            bucketLabels={weeklyBreakdown.bucketLabels}
+            rows={weeklyBreakdown.frentes.aparelhos}
+            totals={weeklyBreakdown.totals.aparelhos}
+            isValor
+          />
+        </div>
       </div>
 
       <div className="card p-4">

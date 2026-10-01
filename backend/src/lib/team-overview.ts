@@ -68,6 +68,28 @@ export interface TeamOverview {
   totals: KpiTotals;
   totalsAnterior: KpiTotals;
   evolution: EvolutionSeries;
+  weeklyBreakdown: WeeklyBreakdown;
+}
+
+// Quadro "tipo planilha" — uma linha por colaborador, uma coluna por
+// dia/semana do período (mesmo bucket usado em getEvolutionSeries), pra
+// cada uma das 5 frentes. Só considera os pontos/valor ATIVADOS (mesma
+// regra de dataConsideradaAtivacao usada no resto do app) — é a visão que
+// o supervisor usa pra bater o fechamento manualmente numa planilha.
+export interface WeeklyFrenteRow {
+  memberId: string;
+  memberName: string;
+  values: number[]; // alinhado com bucketLabels
+  total: number;
+}
+
+export type FrenteKey = "mv" | "fbava" | "altas" | "altas_pf" | "aparelhos";
+
+export interface WeeklyBreakdown {
+  granularity: "day" | "week";
+  bucketLabels: string[];
+  frentes: Record<FrenteKey, WeeklyFrenteRow[]>;
+  totals: Record<FrenteKey, number[]>; // linha "Total geral" por bucket
 }
 
 function periodWhereClause(period: PeriodFilter) {
@@ -367,6 +389,127 @@ export async function getEvolutionSeries(userIds: string[], period: PeriodFilter
   return { granularity, points: bucketOrder.map((k) => points.get(k)!) };
 }
 
+function sumNums(nums: number[]): number {
+  return nums.reduce((a, b) => a + b, 0);
+}
+
+function emptyWeeklyBreakdown(): WeeklyBreakdown {
+  return {
+    granularity: "day",
+    bucketLabels: [],
+    frentes: { mv: [], fbava: [], altas: [], altas_pf: [], aparelhos: [] },
+    totals: { mv: [], fbava: [], altas: [], altas_pf: [], aparelhos: [] },
+  };
+}
+
+export async function getWeeklyBreakdown(
+  members: { id: string; name: string }[],
+  period: PeriodFilter
+): Promise<WeeklyBreakdown> {
+  if (members.length === 0) return emptyWeeklyBreakdown();
+
+  const frenteKeys: FrenteKey[] = ["mv", "fbava", "altas", "altas_pf", "aparelhos"];
+
+  const now = new Date();
+  const from = period.from ?? new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const to = period.to ?? now;
+
+  const totalDays = Math.max(1, Math.ceil((startOfDay(to).getTime() - startOfDay(from).getTime()) / 86400000) + 1);
+  const granularity: "day" | "week" = totalDays <= 31 ? "day" : "week";
+
+  const bucketOrder: string[] = [];
+  const bucketLabel = new Map<string, string>();
+  function ensureBucket(key: string, label: string) {
+    if (!bucketLabel.has(key)) {
+      bucketOrder.push(key);
+      bucketLabel.set(key, label);
+    }
+  }
+  function keyForDate(d: Date): { key: string; label: string } {
+    if (granularity === "day") return { key: dayKey(d), label: dayLabel(d) };
+    const diffDays = Math.floor((startOfDay(d).getTime() - startOfDay(from).getTime()) / 86400000);
+    const weekIndex = Math.max(0, Math.floor(diffDays / 7));
+    return { key: `w${weekIndex}`, label: `${weekIndex + 1}ª semana` };
+  }
+
+  if (granularity === "day") {
+    for (let i = 0; i < totalDays; i++) {
+      const d = new Date(from);
+      d.setDate(d.getDate() + i);
+      ensureBucket(dayKey(d), dayLabel(d));
+    }
+  } else {
+    const totalWeeks = Math.ceil(totalDays / 7);
+    for (let i = 0; i < totalWeeks; i++) ensureBucket(`w${i}`, `${i + 1}ª semana`);
+  }
+
+  const memberIds = members.map((m) => m.id);
+  const items = await prisma.saleItem.findMany({
+    where: {
+      sale: { colaboradorId: { in: memberIds }, cancelado: false },
+      ativo: true,
+    },
+    select: {
+      indicator: true,
+      pointsTotal: true,
+      valorReais: true,
+      ativo: true,
+      dataAtivacao: true,
+      sale: { select: { colaboradorId: true, createdAt: true } },
+    },
+  });
+
+  type MemberAcc = Record<FrenteKey, Map<string, number>>;
+  const acc = new Map<string, MemberAcc>();
+  function memberAcc(memberId: string): MemberAcc {
+    let m = acc.get(memberId);
+    if (!m) {
+      m = { mv: new Map(), fbava: new Map(), altas: new Map(), altas_pf: new Map(), aparelhos: new Map() };
+      acc.set(memberId, m);
+    }
+    return m;
+  }
+  for (const m of members) memberAcc(m.id);
+
+  for (const item of items) {
+    const frente = frenteKeyFromIndicator(item.indicator) as FrenteKey | null;
+    if (!frente) continue;
+    const dataConsiderada = dataConsideradaAtivacao(item.sale.createdAt, item.ativo, item.dataAtivacao);
+    if (!dataConsiderada || dataConsiderada < from || dataConsiderada > to) continue;
+    const { key, label } = keyForDate(dataConsiderada);
+    ensureBucket(key, label);
+    const valor = frente === "aparelhos" ? item.valorReais ?? 0 : item.pointsTotal;
+    const map = memberAcc(item.sale.colaboradorId)[frente];
+    map.set(key, (map.get(key) ?? 0) + valor);
+  }
+
+  const bucketLabels = bucketOrder.map((k) => bucketLabel.get(k)!);
+
+  const frentesOut: Record<FrenteKey, WeeklyFrenteRow[]> = { mv: [], fbava: [], altas: [], altas_pf: [], aparelhos: [] };
+  const totalsOut: Record<FrenteKey, number[]> = {
+    mv: bucketOrder.map(() => 0),
+    fbava: bucketOrder.map(() => 0),
+    altas: bucketOrder.map(() => 0),
+    altas_pf: bucketOrder.map(() => 0),
+    aparelhos: bucketOrder.map(() => 0),
+  };
+
+  for (const m of members) {
+    const acc = memberAcc(m.id);
+    for (const frente of frenteKeys) {
+      const map = acc[frente];
+      const values = bucketOrder.map((k) => map.get(k) ?? 0);
+      const total = sumNums(values);
+      frentesOut[frente].push({ memberId: m.id, memberName: m.name, values, total });
+      values.forEach((v, i) => {
+        totalsOut[frente][i] += v;
+      });
+    }
+  }
+
+  return { granularity, bucketLabels, frentes: frentesOut, totals: totalsOut };
+}
+
 export async function getTeamOverview(userIds: string[], period: PeriodFilter = {}): Promise<TeamOverview> {
   const users = await prisma.user.findMany({
     where: { id: { in: userIds } },
@@ -393,13 +536,17 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
     });
   }
 
-  const [totals, totalsAnterior, evolution] = await Promise.all([
+  const [totals, totalsAnterior, evolution, weeklyBreakdown] = await Promise.all([
     getKpiTotals(userIds, period),
     getKpiTotals(userIds, previousPeriod(period)),
     getEvolutionSeries(userIds, period),
+    getWeeklyBreakdown(
+      users.map((u: { id: string; name: string }) => ({ id: u.id, name: u.name })),
+      period
+    ),
   ]);
 
-  return { members, totals, totalsAnterior, evolution };
+  return { members, totals, totalsAnterior, evolution, weeklyBreakdown };
 }
 
 export { getFaixaTables };
