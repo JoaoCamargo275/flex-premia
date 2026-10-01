@@ -325,8 +325,22 @@ function addColaboradorSheet(
     sheet.addRow(["Nenhuma venda ativada nesse período."]);
   } else {
     ativarAutoFiltro(sheet, detailHeaderRowNumber, sheet.rowCount, 9);
-    const totalValor = sum(c.vendas.map((v) => v.valorReais ?? 0));
-    const totalValorRow = sheet.addRow(["TOTAL DE PRODUTOS VENDIDOS (R$)", "", "", "", "", "", "", "", totalValor]);
+    // Só ALTAS PJ entra nesse total — Aparelhos já tem o próprio total em R$
+    // na tabela de frentes acima, não precisa somar os dois juntos aqui.
+    const totalValorAltas = sum(
+      c.vendas.filter((v) => v.frente === FRENTE_LABELS.altas).map((v) => v.valorReais ?? 0)
+    );
+    const totalValorRow = sheet.addRow([
+      "TOTAL ALTAS PJ VENDIDO (R$)",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      totalValorAltas,
+    ]);
     totalValorRow.font = { bold: true };
     totalValorRow.getCell(9).numFmt = MOEDA_FMT;
   }
