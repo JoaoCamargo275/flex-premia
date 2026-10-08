@@ -10,6 +10,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:add-altas-pf": "tsx prisma/add-catalogo-pf.ts",
+    "db:update-catalogo-2026-10": "tsx prisma/update-catalogo-2026-10.ts",
     "db:studio": "prisma studio"
   },
   "prisma": {
