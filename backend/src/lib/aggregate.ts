@@ -1,19 +1,35 @@
 import { prisma } from "./prisma";
 import {
   calcularPremiacao,
+  calcularPremiacaoAntiga,
   FaixaTables,
   PontosAgregados,
   ResultadoPremiacao,
 } from "./calculo-premiacao";
 
+// A partir de 01/10/2026 vale a regra NOVA de premiação; SET/2026 (inclusive)
+// e meses anteriores continuam na regra ANTIGA — ver calculo-premiacao.ts.
+export const CUTOVER_OUT26 = new Date(2026, 9, 1); // mês 9 = outubro (0-indexado)
+
+// Decide a regra pelo mês do período CALCULADO (period.from), não pelo mês
+// em que a venda foi registrada — é assim que o painel/fechamento sempre
+// funcionou (um mês selecionado de cada vez). Sem "from" (consulta de todo o
+// histórico, sem filtro de mês), usa a regra nova por padrão.
+export function usaRegraNova(period: PeriodFilter): boolean {
+  if (!period.from) return true;
+  return period.from >= CUTOVER_OUT26;
+}
+
 export async function getFaixaTables(): Promise<FaixaTables> {
-  const [mv, fbava, altas, altasPF, aparelhoFaixas, aparelhoBonus] = await Promise.all([
+  const [mv, fbava, altas, altasPF, aparelhoFaixas, aparelhoBonus, mvAntiga, altasAntiga] = await Promise.all([
     prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV" }, orderBy: { faixa: "asc" } }),
     prisma.faixaTable.findMany({ where: { indicator: "RENOV_FBAVA" }, orderBy: { faixa: "asc" } }),
     prisma.faixaTable.findMany({ where: { indicator: "ALTAS" }, orderBy: { faixa: "asc" } }),
     prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PF" }, orderBy: { faixa: "asc" } }),
     prisma.aparelhoFaixa.findMany({ orderBy: { faixa: "asc" } }),
     prisma.aparelhoBonus.findMany({ orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
   ]);
   return {
     faixasMV: mv,
@@ -22,6 +38,8 @@ export async function getFaixaTables(): Promise<FaixaTables> {
     faixasAltasPF: altasPF,
     aparelhoFaixas,
     aparelhoBonus,
+    faixasMVAntiga: mvAntiga,
+    faixasAltasAntiga: altasAntiga,
   };
 }
 
@@ -123,7 +141,8 @@ export function ehSemCarencia(indicator: string, categoryId: string | null | und
 
 async function sumPontosPorIndicador(
   colaboradorId: string,
-  period: PeriodFilter
+  period: PeriodFilter,
+  regraNova: boolean
 ): Promise<{ lancado: PontosAcc; ativado: PontosAcc }> {
   const range = rangeDoPeriodo(period);
 
@@ -148,7 +167,9 @@ async function sumPontosPorIndicador(
 
   for (const it of items) {
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const semCarencia = ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
+    // A exceção de "sem carência" (Aparelhos/Internet Fixa contam pelo mês
+    // real de ativação) só vale na regra nova (a partir de OUT/2026).
+    const semCarencia = regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
     const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (contaLancado) somarNoAcc(lancado, it.indicator, it.pointsTotal, it.valorReais);
@@ -252,6 +273,7 @@ export async function getProdutosPorFrente(
   period: PeriodFilter = {}
 ): Promise<ProdutosPorFrente> {
   const range = rangeDoPeriodo(period);
+  const regraNova = usaRegraNova(period);
 
   // Mesma regra do painel: "lançado" pela data da venda, "ativado" pela
   // data considerada de ativação (ver dataConsideradaAtivacao) — um item pode entrar
@@ -286,7 +308,7 @@ export async function getProdutosPorFrente(
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const semCarencia = ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
+    const semCarencia = regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
     const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (!contaLancado && !contaAtivado) continue;
@@ -326,21 +348,24 @@ export async function getPainelColaborador(
   colaboradorId: string,
   period: PeriodFilter = {}
 ): Promise<PainelColaborador> {
+  const regraNova = usaRegraNova(period);
   const tables = await getFaixaTables();
   const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou, blAtivadas] = await Promise.all([
-    sumPontosPorIndicador(colaboradorId, period),
+    sumPontosPorIndicador(colaboradorId, period, regraNova),
     getFaltouInjustificada(colaboradorId, period),
     contarBLsAtivadas(colaboradorId, period),
   ]);
 
   // A trava de "6 BL no mês" é sempre sobre o que foi efetivamente
   // ativado — por isso o mesmo valor entra tanto no lado "lançado" quanto
-  // no "ativado" (não existe um "BL lançada" separado).
+  // no "ativado" (não existe um "BL lançada" separado). Só é usada pela
+  // regra nova (calcularPremiacao) — a antiga ignora esse campo.
   const lancadoInput: PontosAgregados = { ...lancadoAgg, blAtivadas, faltouInjustificada: false };
   const ativadoInput: PontosAgregados = { ...ativadoAgg, blAtivadas, faltouInjustificada: faltou };
 
+  const calc = regraNova ? calcularPremiacao : calcularPremiacaoAntiga;
   return {
-    lancado: calcularPremiacao(lancadoInput, tables),
-    ativado: calcularPremiacao(ativadoInput, tables),
+    lancado: calc(lancadoInput, tables),
+    ativado: calc(ativadoInput, tables),
   };
 }

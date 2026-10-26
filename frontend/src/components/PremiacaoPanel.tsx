@@ -1,5 +1,5 @@
 import { fmtBRL, fmtNum } from "../lib/format";
-import type { ResultadoPremiacao, PainelColaborador, FaixaTables, FaixaRow, AparelhoBonusRow } from "../lib/premiacao-types";
+import type { ResultadoPremiacao, PainelColaborador, FaixaTables, FaixaRow, AparelhoBonusRow, AparelhoFaixaRow } from "../lib/premiacao-types";
 
 const COLORS = {
   mv: "#ec1a72",
@@ -131,6 +131,7 @@ function BarraLinha({ row, top, rank, gridFracoes }: { row: BarraFrente; top: nu
 }
 
 function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
+  const legado = painel.ativado.legado;
   const fAltasPFAtivado = faixaAlcancada(faixas.faixasAltasPF, painel.ativado.ptsAltasPF);
   const bonusAparelhoAtivado = bonusAparelhoAtual(faixas.aparelhoBonus, painel.ativado.valorAparelhos);
 
@@ -138,15 +139,19 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
   // cada uma mostra a própria faixa. ALTAS PF é bônus à parte (depende de a
   // Faixa_1 PJ estar liberada — ver aviso abaixo). Aparelhos não tem mais
   // régua de "faixa determinante": mostra o nível do bônus em R$.
-  const mvMax = faixas.faixasMV[faixas.faixasMV.length - 1]?.pts ?? 1;
-  const altasMax = faixas.faixasAltas[faixas.faixasAltas.length - 1]?.pts ?? 1;
+  // Em meses ANTIGOS (legado = regra até SET/2026), usa as réguas antigas de
+  // MV/ALTAS e os pontos de MV não incluem FB/AVA (que tem bônus próprio).
+  const faixasMVAtual = legado ? faixas.faixasMVAntiga : faixas.faixasMV;
+  const faixasAltasAtual = legado ? faixas.faixasAltasAntiga : faixas.faixasAltas;
+  const mvMax = faixasMVAtual[faixasMVAtual.length - 1]?.pts ?? 1;
+  const altasMax = faixasAltasAtual[faixasAltasAtual.length - 1]?.pts ?? 1;
   const altasPFMax = faixas.faixasAltasPF[faixas.faixasAltasPF.length - 1]?.pts ?? 1;
   const aparelhosMax = faixas.aparelhoBonus[faixas.aparelhoBonus.length - 1]?.valor ?? 1;
 
   const rows: BarraFrente[] = [
     {
       id: "mv",
-      label: "RENOV. MV + FB/AVA",
+      label: legado ? "RENOV. MV" : "RENOV. MV + FB/AVA",
       color: COLORS.mv,
       lancado: painel.lancado.ptsMV,
       ativado: painel.ativado.ptsMV,
@@ -199,7 +204,7 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
     rankOf[r.id] = i;
   });
 
-  const fracoesMV = gridFracoes(faixas.faixasMV);
+  const fracoesMV = gridFracoes(faixasMVAtual);
 
   return (
     <div>
@@ -237,14 +242,24 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
         </div>
       </div>
       <p className="text-xs text-ink-dim mt-2">
-        RENOV. MV (já somado com FB/AVA) e ALTAS são frentes independentes — cada uma paga pela própria faixa, sem mais a
-        regra de "menor faixa entre as frentes". ALTAS PF é bônus à parte. A premiação só é paga se as duas travas de
-        elegibilidade abaixo (6 BL + R$6.000,00 em Aparelhos no período) estiverem batidas.
+        {legado ? (
+          <>
+            Regra vigente até SET/2026: a faixa final de RENOV. MV e ALTAS é determinada pela <b>menor</b> faixa entre
+            RENOV. MV, ALTAS e Aparelhos (régua própria de R$ 6 mil a R$ 20 mil). RENOV. FB/AVA tem bônus à parte. ALTAS PF
+            é bônus à parte.
+          </>
+        ) : (
+          <>
+            RENOV. MV (já somado com FB/AVA) e ALTAS são frentes independentes — cada uma paga pela própria faixa, sem mais
+            a regra de "menor faixa entre as frentes". ALTAS PF é bônus à parte. A premiação só é paga se as duas travas de
+            elegibilidade abaixo (6 BL + R$6.000,00 em Aparelhos no período) estiverem batidas.
+          </>
+        )}
       </p>
       {!painel.ativado.altasPFLiberado && (
         <div className="text-xs font-semibold mt-3 rounded-lg px-3 py-2" style={{ background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.4)", color: COLORS.altas_pf }}>
-          🔒 O bônus de ALTAS PF ainda não está liberado: é preciso atingir ao menos a Faixa 1 (ativado) em RENOV. MV e
-          ALTAS antes de as vendas PF gerarem premiação.
+          🔒 O bônus de ALTAS PF ainda não está liberado: é preciso atingir ao menos a Faixa 1 (ativado) em RENOV. MV
+          {legado ? ", ALTAS e Aparelhos" : " e ALTAS"} antes de as vendas PF gerarem premiação.
         </div>
       )}
     </div>
@@ -354,14 +369,65 @@ function ElegibilidadeCard({ resultado }: { resultado: ResultadoPremiacao }) {
   );
 }
 
+function faixaAparelhoAtual(rows: AparelhoFaixaRow[], valor: number): AparelhoFaixaRow {
+  let atual = rows[0];
+  for (const f of rows) {
+    if (f.faixa !== 0 && valor >= f.valor) atual = f;
+  }
+  return atual ?? { faixa: 0, valor: 0, metaPct: "< 60%" };
+}
+
+/** Régua antiga (até SET/2026) de Aparelhos — R$6 mil a R$20 mil — que era uma das frentes "determinantes" da faixa final. */
+function AparelhoFaixaTable({ rows, valorAtual, faixaFinal }: { rows: AparelhoFaixaRow[]; valorAtual: number; faixaFinal: number }) {
+  const atual = faixaAparelhoAtual(rows, valorAtual);
+  return (
+    <div className="card p-4" style={{ borderTop: `3px solid ${COLORS.aparelhos}` }}>
+      <h4 className="text-sm font-bold mb-3">Aparelhos — régua antiga (R$ 6 mil a R$ 20 mil)</h4>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs min-w-[320px]">
+          <thead>
+            <tr className="text-left text-ink-dim uppercase">
+              <th className="py-1 pr-2">Faixa</th>
+              <th className="py-1 pr-2">% da meta</th>
+              <th className="py-1 pr-2">Valor vendido a partir de</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const current = r.faixa === atual.faixa;
+              return (
+                <tr
+                  key={r.faixa}
+                  className="border-t border-white/5"
+                  style={current ? { color: COLORS.aparelhos, fontWeight: 800, background: "rgba(255,255,255,.04)" } : { color: "var(--ink-dim)" }}
+                >
+                  <td className="py-1.5 pr-2">Faixa {r.faixa}</td>
+                  <td className="py-1.5 pr-2">{r.metaPct}</td>
+                  <td className="py-1.5 pr-2">{r.faixa === 0 ? "R$ -" : fmtBRL(r.valor)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-ink-dim mt-3">
+        Regra antiga: a faixa de Aparelhos entra no cálculo da faixa final (junto com RENOV. MV e ALTAS) pela regra da{" "}
+        <b>menor faixa entre as frentes</b> — faixa final atual: <b style={{ color: COLORS.aparelhos }}>Faixa {faixaFinal}</b>.
+      </p>
+    </div>
+  );
+}
+
 function AparelhoBonusTable({
   bonusRows,
   valorAtual,
   bonusValorAtual,
+  legado,
 }: {
   bonusRows: AparelhoBonusRow[];
   valorAtual: number;
   bonusValorAtual: number;
+  legado?: boolean;
 }) {
   const rows = bonusRows.filter((r) => r.faixa !== 0);
   const atual = bonusAparelhoAtual(bonusRows, valorAtual);
@@ -415,7 +481,9 @@ function AparelhoBonusTable({
         }
       >
         {advance
-          ? "🎉 Atingiu R$ 50.000,00 em aparelhos — a frente (RENOV. MV ou ALTAS) que estiver na faixa mais baixa avança 1 faixa!"
+          ? legado
+            ? "🎉 Atingiu R$ 50.000,00 em aparelhos — a faixa final (determinante) avança 1 faixa!"
+            : "🎉 Atingiu R$ 50.000,00 em aparelhos — a frente (RENOV. MV ou ALTAS) que estiver na faixa mais baixa avança 1 faixa!"
           : `Ainda não atingiu R$ 50.000,00 em aparelhos — não há avanço extra de faixa (faltam ${fmtBRL(Math.max(0, 50000 - valorAtual))})`}
       </div>
       <p className="text-xs text-ink-dim mt-2">
@@ -480,7 +548,10 @@ function FrenteBreakdown({ resultado }: { resultado: ResultadoPremiacao }) {
 }
 
 export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
-  // ptsMV já vem do backend com FB/AVA somado — não soma ptsFBAVA de novo aqui.
+  const legado = painel.ativado.legado;
+  // ptsMV já vem do backend com FB/AVA somado (regra nova) — não soma ptsFBAVA de novo aqui.
+  // Na regra antiga (legado), ptsMV já vem SEM FB/AVA (que tem bônus à parte), então o total
+  // aqui também não inclui FB/AVA — mantém consistência com o que cada regra de fato paga.
   const ptsLancadoTotal = painel.lancado.ptsMV + painel.lancado.ptsAltas + painel.lancado.ptsAltasPF;
   const ptsAtivadoTotal = painel.ativado.ptsMV + painel.ativado.ptsAltas + painel.ativado.ptsAltasPF;
   const fAltasPFAtivado = faixaAlcancada(faixas.faixasAltasPF, painel.ativado.ptsAltasPF);
@@ -510,8 +581,9 @@ export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColabor
       )}
       {!painel.ativado.faltouInjustificada && painel.ativado.isZero && (
         <div className="card p-4 border border-accent-3 text-accent-3 text-sm font-semibold">
-          ⚠️ Faltam as travas de elegibilidade do mês (6 BL instaladas e/ou R$ 6.000,00 em Aparelhos ativados) — a premiação
-          ativada do período está zerada.
+          {legado
+            ? "⚠️ Nenhuma das frentes (RENOV. MV, ALTAS ou Aparelhos) atingiu a Faixa 1 no período — a premiação ativada está zerada."
+            : "⚠️ Faltam as travas de elegibilidade do mês (6 BL instaladas e/ou R$ 6.000,00 em Aparelhos ativados) — a premiação ativada do período está zerada."}
         </div>
       )}
 
@@ -531,37 +603,47 @@ export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColabor
           Quanto falta para a próxima faixa — sua posição atual está destacada
         </h3>
         <p className="text-xs text-ink-dim mb-3">
-          RENOV. MV (já com FB/AVA somado) e ALTAS são independentes — cada uma é paga pela própria faixa, sem a regra
-          antiga de "menor faixa entre as frentes". ALTAS PF é bônus à parte.
+          {legado
+            ? 'Regra vigente até SET/2026: a faixa final é a MENOR entre RENOV. MV, ALTAS e Aparelhos. ALTAS PF e RENOV. FB/AVA são bônus à parte.'
+            : 'RENOV. MV (já com FB/AVA somado) e ALTAS são independentes — cada uma é paga pela própria faixa, sem a regra antiga de "menor faixa entre as frentes". ALTAS PF é bônus à parte.'}
         </p>
         <div className="grid md:grid-cols-2 gap-4">
           <MiniFaixaTable
-            title="RENOV. MV (já com FB/AVA somado)"
-            rows={faixas.faixasMV}
+            title={legado ? "RENOV. MV (régua antiga)" : "RENOV. MV (já com FB/AVA somado)"}
+            rows={legado ? faixas.faixasMVAntiga : faixas.faixasMV}
             faixaAtual={painel.ativado.faixaMV}
             ptsAtual={painel.ativado.ptsMV}
             color={COLORS.mv}
           />
           <MiniFaixaTable
-            title="ALTAS"
-            rows={faixas.faixasAltas}
+            title={legado ? "ALTAS (régua antiga)" : "ALTAS"}
+            rows={legado ? faixas.faixasAltasAntiga : faixas.faixasAltas}
             faixaAtual={painel.ativado.faixaALTAS}
             ptsAtual={painel.ativado.ptsAltas}
             color={COLORS.altas}
           />
           <MiniFaixaTable
-            title={`ALTAS PF (bônus independente${painel.ativado.altasPFLiberado ? "" : " — bloqueado até Faixa 1 PJ"})`}
+            title={`ALTAS PF (bônus independente${painel.ativado.altasPFLiberado ? "" : " — bloqueado"})`}
             rows={faixas.faixasAltasPF}
             faixaAtual={fAltasPFAtivado.faixa}
             ptsAtual={painel.ativado.ptsAltasPF}
             color={COLORS.altas_pf}
           />
-          <ElegibilidadeCard resultado={painel.ativado} />
+          {legado ? (
+            <AparelhoFaixaTable
+              rows={faixas.aparelhoFaixas}
+              valorAtual={painel.ativado.valorAparelhos}
+              faixaFinal={painel.ativado.faixaMV}
+            />
+          ) : (
+            <ElegibilidadeCard resultado={painel.ativado} />
+          )}
           <div className="md:col-span-2">
             <AparelhoBonusTable
               bonusRows={faixas.aparelhoBonus}
               valorAtual={painel.ativado.valorAparelhos}
               bonusValorAtual={painel.ativado.bonusAparelhosRS}
+              legado={legado}
             />
           </div>
         </div>

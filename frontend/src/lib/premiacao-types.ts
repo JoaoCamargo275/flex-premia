@@ -14,9 +14,11 @@ export interface ResultadoPremiacao {
   faixaALTAS: number;
   faixaAltasPF: number;
   isZero: boolean;
-  /** true se bateu as duas travas (6 BL + R$6.000 em Aparelhos) no período. */
+  /** true se bateu as travas de elegibilidade no período (significado muda conforme `legado`). */
   destravou: boolean;
   advance: boolean;
+  /** true quando este resultado foi calculado pela regra ANTIGA (até SET/2026). */
+  legado: boolean;
 
   valorMV: number;
   valorALTAS: number;
@@ -61,6 +63,8 @@ export interface FaixaTables {
   faixasAltasPF: FaixaRow[];
   aparelhoFaixas: AparelhoFaixaRow[];
   aparelhoBonus: AparelhoBonusRow[];
+  faixasMVAntiga: FaixaRow[];
+  faixasAltasAntiga: FaixaRow[];
 }
 
 export interface FrenteBreakdown {
