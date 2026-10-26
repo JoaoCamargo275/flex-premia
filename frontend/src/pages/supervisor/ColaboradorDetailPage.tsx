@@ -109,8 +109,7 @@ export default function SupervisorColaboradorDetailPage() {
       <PeriodFilterForm />
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <FrenteCard icon="📱" label="RENOV. MV" lancado={painel.lancado.ptsMV} ativado={painel.ativado.ptsMV} />
-        <FrenteCard icon="🔄" label="RENOV. FB/AVA" lancado={painel.lancado.ptsFBAVA} ativado={painel.ativado.ptsFBAVA} />
+        <FrenteCard icon="📱" label="RENOV. MV + FB/AVA" lancado={painel.lancado.ptsMV} ativado={painel.ativado.ptsMV} />
         <FrenteCard icon="🚀" label="ALTAS" lancado={painel.lancado.ptsAltas} ativado={painel.ativado.ptsAltas} />
         <FrenteCard icon="🧑" label="ALTAS PF" lancado={painel.lancado.ptsAltasPF} ativado={painel.ativado.ptsAltasPF} />
         <FrenteCard
@@ -140,12 +139,8 @@ export default function SupervisorColaboradorDetailPage() {
             </thead>
             <tbody>
               <tr className="border-t border-white/5">
-                <td className="py-2 pr-3">📱 RENOV. MV</td>
+                <td className="py-2 pr-3">📱 RENOV. MV + FB/AVA</td>
                 <td className="py-2 pr-3 text-right font-semibold">{fmtBRL(painel.ativado.valorMV)}</td>
-              </tr>
-              <tr className="border-t border-white/5">
-                <td className="py-2 pr-3">🔄 RENOV. FB/AVA</td>
-                <td className="py-2 pr-3 text-right font-semibold">{fmtBRL(painel.ativado.bonusFBAVA)}</td>
               </tr>
               <tr className="border-t border-white/5">
                 <td className="py-2 pr-3">🚀 ALTAS</td>

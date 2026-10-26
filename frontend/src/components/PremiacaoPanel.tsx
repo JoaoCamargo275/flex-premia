@@ -32,13 +32,16 @@ function bonusAparelhoAtual(rows: AparelhoBonusRow[], valor: number): AparelhoBo
 }
 
 const ROW_H = 104; // altura de cada linha da corrida de barras, em px
-const MEDALS = ["🥇", "🥈", "🥉", "🏅", "🏅"];
-const ICONS: Record<string, string> = { mv: "📱", fbava: "🔄", altas: "🚀", altas_pf: "🧑", aparelhos: "💰" };
-// As 6 faixas de MV, ALTAS, FB/AVA e Aparelhos (determinante) usam a mesma
-// progressão relativa de meta (60/80/100/120/150/200%), então convertida
-// para fração da Faixa 6 de cada frente, as posições das linhas de grade
-// caem sempre nos mesmos pontos — por isso dá pra desenhar um único eixo X.
-const FAIXA_GRID_FRACOES = [0.3, 0.4, 0.5, 0.6, 0.75, 1.0];
+const MEDALS = ["🥇", "🥈", "🥉", "🏅"];
+const ICONS: Record<string, string> = { mv: "📱", altas: "🚀", altas_pf: "🧑", aparelhos: "💰" };
+// RENOV. MV (já com FB/AVA somado) e ALTAS usam a mesma progressão de
+// pontos por faixa (200/300/400/500/600/700/800/1000 — Faixas 1 a 8), então
+// convertida para fração da Faixa 8, as posições das linhas de grade caem
+// sempre nos mesmos pontos — por isso dá pra desenhar um único eixo X.
+function gridFracoes(rows: FaixaRow[]): number[] {
+  const max = rows[rows.length - 1]?.pts || 1;
+  return rows.filter((r) => r.faixa !== 0).map((r) => r.pts / max);
+}
 
 interface BarraFrente {
   id: string;
@@ -51,7 +54,7 @@ interface BarraFrente {
   faixaLabel: string;
 }
 
-function BarraLinha({ row, top, rank }: { row: BarraFrente; top: number; rank: number }) {
+function BarraLinha({ row, top, rank, gridFracoes }: { row: BarraFrente; top: number; rank: number; gridFracoes: number[] }) {
   const fracAtivado = row.scaleMax > 0 ? row.ativado / row.scaleMax : 0;
   const fracLancado = row.scaleMax > 0 ? row.lancado / row.scaleMax : 0;
   const widthAtivado = Math.max(0, Math.min(100, fracAtivado * 100));
@@ -78,8 +81,8 @@ function BarraLinha({ row, top, rank }: { row: BarraFrente; top: number; rank: n
         </span>
       </div>
       <div className="relative h-7 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,.05)", boxShadow: "inset 0 1px 3px rgba(0,0,0,.4)" }}>
-        {/* linhas de grade das 6 faixas */}
-        {FAIXA_GRID_FRACOES.map((f, i) => (
+        {/* linhas de grade das faixas */}
+        {gridFracoes.map((f, i) => (
           <div
             key={i}
             className="absolute top-0 bottom-0 w-px z-10"
@@ -119,7 +122,7 @@ function BarraLinha({ row, top, rank }: { row: BarraFrente; top: number; rank: n
         </span>
         {alemDoTeto && (
           <span className="text-[.65rem] font-extrabold" style={{ background: "var(--grad)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>
-            🚀 além da Faixa 6
+            🚀 além da última faixa
           </span>
         )}
       </div>
@@ -128,42 +131,28 @@ function BarraLinha({ row, top, rank }: { row: BarraFrente; top: number; rank: n
 }
 
 function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
-  const fFbavaAtivado = faixaAlcancada(faixas.faixasFbava, painel.ativado.ptsFBAVA);
-  const fFbavaLancado = faixaAlcancada(faixas.faixasFbava, painel.lancado.ptsFBAVA);
   const fAltasPFAtivado = faixaAlcancada(faixas.faixasAltasPF, painel.ativado.ptsAltasPF);
+  const bonusAparelhoAtivado = bonusAparelhoAtual(faixas.aparelhoBonus, painel.ativado.valorAparelhos);
 
-  // RENOV. MV, ALTAS e Aparelhos são determinantes: a faixa que efetivamente
-  // conta (e é paga) é sempre a mesma — a menor entre as três. FB/AVA e
-  // ALTAS PF são bônus à parte e mantêm sua própria faixa (ALTAS PF também
-  // depende de a Faixa_1 PJ estar liberada — ver aviso abaixo).
-  const faixaDet = painel.ativado.faixaDeterminante;
-
+  // RENOV. MV (já com FB/AVA somado) e ALTAS são frentes independentes —
+  // cada uma mostra a própria faixa. ALTAS PF é bônus à parte (depende de a
+  // Faixa_1 PJ estar liberada — ver aviso abaixo). Aparelhos não tem mais
+  // régua de "faixa determinante": mostra o nível do bônus em R$.
   const mvMax = faixas.faixasMV[faixas.faixasMV.length - 1]?.pts ?? 1;
-  const fbavaMax = faixas.faixasFbava[faixas.faixasFbava.length - 1]?.pts ?? 1;
   const altasMax = faixas.faixasAltas[faixas.faixasAltas.length - 1]?.pts ?? 1;
   const altasPFMax = faixas.faixasAltasPF[faixas.faixasAltasPF.length - 1]?.pts ?? 1;
-  const aparelhosMax = faixas.aparelhoFaixas[faixas.aparelhoFaixas.length - 1]?.valor ?? 1;
+  const aparelhosMax = faixas.aparelhoBonus[faixas.aparelhoBonus.length - 1]?.valor ?? 1;
 
   const rows: BarraFrente[] = [
     {
       id: "mv",
-      label: "RENOV. MV",
+      label: "RENOV. MV + FB/AVA",
       color: COLORS.mv,
       lancado: painel.lancado.ptsMV,
       ativado: painel.ativado.ptsMV,
       scaleMax: mvMax,
       unidade: "pts",
-      faixaLabel: `Faixa ${faixaDet}`,
-    },
-    {
-      id: "fbava",
-      label: "RENOV. FB/AVA",
-      color: COLORS.fbava,
-      lancado: painel.lancado.ptsFBAVA,
-      ativado: painel.ativado.ptsFBAVA,
-      scaleMax: fbavaMax,
-      unidade: "pts",
-      faixaLabel: `Faixa ${fFbavaAtivado.faixa}`,
+      faixaLabel: `Faixa ${painel.ativado.faixaMV}`,
     },
     {
       id: "altas",
@@ -173,7 +162,7 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
       ativado: painel.ativado.ptsAltas,
       scaleMax: altasMax,
       unidade: "pts",
-      faixaLabel: `Faixa ${faixaDet}`,
+      faixaLabel: `Faixa ${painel.ativado.faixaALTAS}`,
     },
     {
       id: "altas_pf",
@@ -193,7 +182,7 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
       ativado: painel.ativado.valorAparelhos,
       scaleMax: aparelhosMax,
       unidade: "reais",
-      faixaLabel: `Faixa ${faixaDet}`,
+      faixaLabel: `Nível ${bonusAparelhoAtivado.faixa}`,
     },
   ];
 
@@ -209,6 +198,8 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
     topOf[r.id] = i * ROW_H;
     rankOf[r.id] = i;
   });
+
+  const fracoesMV = gridFracoes(faixas.faixasMV);
 
   return (
     <div>
@@ -230,11 +221,11 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
       <div className="card p-5">
         <div className="relative" style={{ height: rows.length * ROW_H }}>
           {rows.map((row) => (
-            <BarraLinha key={row.id} row={row} top={topOf[row.id]} rank={rankOf[row.id]} />
+            <BarraLinha key={row.id} row={row} top={topOf[row.id]} rank={rankOf[row.id]} gridFracoes={fracoesMV} />
           ))}
         </div>
         <div className="relative mt-1 h-4">
-          {FAIXA_GRID_FRACOES.map((f, i) => (
+          {fracoesMV.map((f, i) => (
             <span
               key={i}
               className="absolute text-[.6rem] text-ink-dim -translate-x-1/2"
@@ -246,18 +237,14 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
         </div>
       </div>
       <p className="text-xs text-ink-dim mt-2">
-        RENOV. MV, ALTAS e Aparelhos são determinantes: a faixa paga é sempre a <b>menor</b> entre as três (por isso mostram a
-        mesma faixa). RENOV. FB/AVA e ALTAS PF são bônus à parte e mantêm sua própria faixa.
+        RENOV. MV (já somado com FB/AVA) e ALTAS são frentes independentes — cada uma paga pela própria faixa, sem mais a
+        regra de "menor faixa entre as frentes". ALTAS PF é bônus à parte. A premiação só é paga se as duas travas de
+        elegibilidade abaixo (6 BL + R$6.000,00 em Aparelhos no período) estiverem batidas.
       </p>
-      {faixas.faixasFbava.length > 0 && fFbavaLancado.faixa !== fFbavaAtivado.faixa && (
-        <p className="text-xs text-ink-dim mt-1">
-          RENOV. FB/AVA lançado já alcançaria a Faixa {fFbavaLancado.faixa} — falta ativar essas vendas.
-        </p>
-      )}
       {!painel.ativado.altasPFLiberado && (
         <div className="text-xs font-semibold mt-3 rounded-lg px-3 py-2" style={{ background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.4)", color: COLORS.altas_pf }}>
-          🔒 O bônus de ALTAS PF ainda não está liberado: é preciso atingir ao menos a Faixa 1 (ativado) em RENOV. MV,
-          ALTAS e Aparelhos (as 3 frentes PJ) antes de as vendas PF gerarem premiação.
+          🔒 O bônus de ALTAS PF ainda não está liberado: é preciso atingir ao menos a Faixa 1 (ativado) em RENOV. MV e
+          ALTAS antes de as vendas PF gerarem premiação.
         </div>
       )}
     </div>
@@ -279,7 +266,8 @@ function MiniFaixaTable({
   ptsAtual: number;
   color: string;
 }) {
-  const semTeto = faixaAtual === 6 && alemDoTeto(rows, ptsAtual);
+  const faixaMaxima = rows[rows.length - 1]?.faixa ?? 0;
+  const semTeto = faixaAtual === faixaMaxima && alemDoTeto(rows, ptsAtual);
   return (
     <div className="card p-4" style={{ borderTop: `3px solid ${color}` }}>
       <h4 className="text-sm font-bold mb-3">{title}</h4>
@@ -320,7 +308,7 @@ function MiniFaixaTable({
           className="text-xs font-bold mt-3 rounded-lg px-3 py-2"
           style={{ background: "linear-gradient(135deg, #ec1a72, #8b3dff)", color: "#fff" }}
         >
-          🚀 Sem teto: com {fmtNum(ptsAtual)} pts você já passou da Faixa 6 — o percentual fica travado em{" "}
+          🚀 Sem teto: com {fmtNum(ptsAtual)} pts você já passou da Faixa {faixaMaxima} — o percentual fica travado em{" "}
           {((rows[rows.length - 1]?.pctFinal ?? 0) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}% e a premiação
           continua subindo proporcionalmente aos pontos.
         </div>
@@ -329,41 +317,38 @@ function MiniFaixaTable({
   );
 }
 
-function AparelhoFaixaTable({ faixas, faixaAtual, valorAtual }: { faixas: FaixaTables; faixaAtual: number; valorAtual: number }) {
+const BL_MINIMO_MES = 6;
+const APARELHOS_MINIMO_MES = 6000;
+
+function ElegibilidadeCard({ resultado }: { resultado: ResultadoPremiacao }) {
+  const blOk = resultado.blAtivadas >= BL_MINIMO_MES;
+  const aparelhosOk = resultado.valorAparelhos >= APARELHOS_MINIMO_MES;
   return (
-    <div className="card p-4" style={{ borderTop: `3px solid ${COLORS.aparelhos}` }}>
-      <h4 className="text-sm font-bold mb-3">Aparelhos — faixa do indicador (determinante, R$ 6 mil a R$ 20 mil)</h4>
-      <div className="overflow-x-auto">
-        <table className="w-full text-xs min-w-[320px]">
-          <thead>
-            <tr className="text-left text-ink-dim uppercase">
-              <th className="py-1 pr-2">Faixa</th>
-              <th className="py-1 pr-2">% da meta</th>
-              <th className="py-1 pr-2">Valor vendido a partir de</th>
-            </tr>
-          </thead>
-          <tbody>
-            {faixas.aparelhoFaixas.map((r) => {
-              const current = r.faixa === faixaAtual;
-              const reached = !current && r.faixa !== 0 && valorAtual >= r.valor;
-              return (
-                <tr
-                  key={r.faixa}
-                  className="border-t border-white/5"
-                  style={current ? { color: COLORS.aparelhos, fontWeight: 800, background: "rgba(255,255,255,.04)" } : reached ? { color: "var(--ink)" } : { color: "var(--ink-dim)" }}
-                >
-                  <td className="py-1.5 pr-2">Faixa {r.faixa}</td>
-                  <td className="py-1.5 pr-2">{r.metaPct}</td>
-                  <td className="py-1.5 pr-2">{r.faixa === 0 ? "R$ -" : fmtBRL(r.valor)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <div
+      className="card p-4"
+      style={{ borderTop: `3px solid ${resultado.destravou ? "#22c55e" : COLORS.altas_pf}` }}
+    >
+      <h4 className="text-sm font-bold mb-3">Elegibilidade — trava da premiação no mês</h4>
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div
+          className="rounded-lg px-3 py-2"
+          style={{ background: blOk ? "rgba(34,197,94,.1)" : "rgba(245,158,11,.1)", border: `1px solid ${blOk ? "rgba(34,197,94,.4)" : "rgba(245,158,11,.4)"}` }}
+        >
+          <div className="text-[.65rem] uppercase tracking-wide text-ink-dim">BL (Internet Fixa) instaladas no mês</div>
+          <div className="text-lg font-extrabold">{blOk ? "✅" : "⚠️"} {fmtNum(resultado.blAtivadas)} / {BL_MINIMO_MES}</div>
+        </div>
+        <div
+          className="rounded-lg px-3 py-2"
+          style={{ background: aparelhosOk ? "rgba(34,197,94,.1)" : "rgba(245,158,11,.1)", border: `1px solid ${aparelhosOk ? "rgba(34,197,94,.4)" : "rgba(245,158,11,.4)"}` }}
+        >
+          <div className="text-[.65rem] uppercase tracking-wide text-ink-dim">Aparelhos ativados no mês</div>
+          <div className="text-lg font-extrabold">{aparelhosOk ? "✅" : "⚠️"} {fmtBRL(resultado.valorAparelhos)} / {fmtBRL(APARELHOS_MINIMO_MES)}</div>
+        </div>
       </div>
-      <p className="text-xs text-ink-dim mt-2">
-        Vendendo abaixo de R$ 6.000,00 (Faixa 0), este indicador zera — e isso zera a parte determinante da premiação (RENOV. MV
-        e ALTAS também), mesmo que eles estejam em faixas altas.
+      <p className="text-xs text-ink-dim mt-3">
+        É preciso bater os dois mínimos no mês (6 BL instaladas <b>e</b> R$ 6.000,00 em Aparelhos ativados) para destravar a
+        premiação. Faltando qualquer um dos dois, a premiação do período inteiro zera — incluindo RENOV. MV, ALTAS, o bônus
+        ALTAS PF e o bônus em R$ de Aparelhos.
       </p>
     </div>
   );
@@ -383,7 +368,7 @@ function AparelhoBonusTable({
   const advance = valorAtual >= 50000;
   return (
     <div className="card p-4" style={{ borderTop: `3px solid ${COLORS.aparelhos}` }}>
-      <h4 className="text-sm font-bold mb-3">Aparelhos — bônus em R$ sempre pago (R$ 10 mil a R$ 50 mil)</h4>
+      <h4 className="text-sm font-bold mb-3">Aparelhos — bônus em R$ (R$ 10 mil a R$ 50 mil)</h4>
       <div className="rounded-lg px-3 py-2 mb-3 flex justify-between items-center flex-wrap gap-2" style={{ background: "rgba(139,61,255,.1)", border: "1px solid rgba(139,61,255,.35)" }}>
         <div>
           <div className="text-[.65rem] uppercase tracking-wide text-ink-dim">Bônus em R$</div>
@@ -430,12 +415,12 @@ function AparelhoBonusTable({
         }
       >
         {advance
-          ? "🎉 Atingiu R$ 50.000,00 em aparelhos — avança 1 faixa adicional na classificação final!"
+          ? "🎉 Atingiu R$ 50.000,00 em aparelhos — a frente (RENOV. MV ou ALTAS) que estiver na faixa mais baixa avança 1 faixa!"
           : `Ainda não atingiu R$ 50.000,00 em aparelhos — não há avanço extra de faixa (faltam ${fmtBRL(Math.max(0, 50000 - valorAtual))})`}
       </div>
       <p className="text-xs text-ink-dim mt-2">
-        Este bônus soma direto na premiação final, em qualquer hipótese, mesmo que a faixa do indicador (tabela acima) esteja em
-        Faixa 0.
+        Esse bônus soma à parte, na mesma mecânica do avanço de faixa acima — mas só é pago se as travas de elegibilidade
+        (6 BL + R$ 6.000,00 em Aparelhos no mês) estiverem batidas.
       </p>
     </div>
   );
@@ -443,18 +428,17 @@ function AparelhoBonusTable({
 
 function ResultadoGrid({ resultado }: { resultado: ResultadoPremiacao }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <Stat
-        label="RENOV. MV"
-        value={`Faixa ${resultado.faixaDeterminante}`}
-        sub={`${fmtNum(resultado.ptsMV)} pts · ${fmtBRL(resultado.valorMV)}`}
+        label="RENOV. MV + FB/AVA"
+        value={`Faixa ${resultado.faixaMV}`}
+        sub={`${fmtNum(resultado.ptsMV)} pts (${fmtNum(resultado.ptsFBAVA)} de FB/AVA) · ${fmtBRL(resultado.valorMV)}`}
       />
       <Stat
         label="ALTAS"
-        value={`Faixa ${resultado.faixaDeterminante}`}
+        value={`Faixa ${resultado.faixaALTAS}`}
         sub={`${fmtNum(resultado.ptsAltas)} pts · ${fmtBRL(resultado.valorALTAS)}`}
       />
-      <Stat label="Bônus RENOV. FB/AVA" value={fmtBRL(resultado.bonusFBAVA)} sub={`${fmtNum(resultado.ptsFBAVA)} pts`} />
       <Stat
         label="Bônus ALTAS PF"
         value={resultado.altasPFLiberado ? fmtBRL(resultado.bonusAltasPF) : "🔒 Bloqueado"}
@@ -482,23 +466,23 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 function FrenteBreakdown({ resultado }: { resultado: ResultadoPremiacao }) {
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-[.7rem] text-ink-dim mt-3">
-      <span><b className="text-ink">{fmtNum(resultado.ptsMV)}</b> RENOV. MV</span>
-      <span>·</span>
-      <span><b className="text-ink">{fmtNum(resultado.ptsFBAVA)}</b> RENOV. FB/AVA</span>
+      <span><b className="text-ink">{fmtNum(resultado.ptsMV)}</b> RENOV. MV + FB/AVA</span>
       <span>·</span>
       <span><b className="text-ink">{fmtNum(resultado.ptsAltas)}</b> ALTAS</span>
       <span>·</span>
       <span><b className="text-ink">{fmtNum(resultado.ptsAltasPF)}</b> ALTAS PF</span>
       <span>·</span>
       <span><b className="text-ink">{fmtBRL(resultado.valorAparelhos)}</b> Aparelhos vendidos</span>
+      <span>·</span>
+      <span><b className="text-ink">{fmtNum(resultado.blAtivadas)}</b> BL ativadas</span>
     </div>
   );
 }
 
 export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
-  const ptsLancadoTotal = painel.lancado.ptsMV + painel.lancado.ptsFBAVA + painel.lancado.ptsAltas + painel.lancado.ptsAltasPF;
-  const ptsAtivadoTotal = painel.ativado.ptsMV + painel.ativado.ptsFBAVA + painel.ativado.ptsAltas + painel.ativado.ptsAltasPF;
-  const fFbavaAtivado = faixaAlcancada(faixas.faixasFbava, painel.ativado.ptsFBAVA);
+  // ptsMV já vem do backend com FB/AVA somado — não soma ptsFBAVA de novo aqui.
+  const ptsLancadoTotal = painel.lancado.ptsMV + painel.lancado.ptsAltas + painel.lancado.ptsAltasPF;
+  const ptsAtivadoTotal = painel.ativado.ptsMV + painel.ativado.ptsAltas + painel.ativado.ptsAltasPF;
   const fAltasPFAtivado = faixaAlcancada(faixas.faixasAltasPF, painel.ativado.ptsAltasPF);
 
   return (
@@ -526,7 +510,8 @@ export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColabor
       )}
       {!painel.ativado.faltouInjustificada && painel.ativado.isZero && (
         <div className="card p-4 border border-accent-3 text-accent-3 text-sm font-semibold">
-          ⚠️ RENOV. MV, ALTAS ou a faixa de Aparelhos (ativados) está em Faixa 0 — a parte determinante da premiação ativada está zerada.
+          ⚠️ Faltam as travas de elegibilidade do mês (6 BL instaladas e/ou R$ 6.000,00 em Aparelhos ativados) — a premiação
+          ativada do período está zerada.
         </div>
       )}
 
@@ -546,29 +531,21 @@ export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColabor
           Quanto falta para a próxima faixa — sua posição atual está destacada
         </h3>
         <p className="text-xs text-ink-dim mb-3">
-          RENOV. MV e ALTAS mostram a <b>faixa determinante</b> (a menor entre RENOV. MV, ALTAS e Aparelhos), que é a que
-          efetivamente é paga — mesmo que a pontuação isolada desse indicador já alcance uma faixa maior (nesse caso, a faixa
-          maior aparece marcada como "já alcançada" na tabela, mas não é a que conta para o valor final).
+          RENOV. MV (já com FB/AVA somado) e ALTAS são independentes — cada uma é paga pela própria faixa, sem a regra
+          antiga de "menor faixa entre as frentes". ALTAS PF é bônus à parte.
         </p>
         <div className="grid md:grid-cols-2 gap-4">
           <MiniFaixaTable
-            title="RENOV. MV"
+            title="RENOV. MV (já com FB/AVA somado)"
             rows={faixas.faixasMV}
-            faixaAtual={painel.ativado.faixaDeterminante}
+            faixaAtual={painel.ativado.faixaMV}
             ptsAtual={painel.ativado.ptsMV}
             color={COLORS.mv}
           />
           <MiniFaixaTable
-            title="RENOV. FB/AVA (bônus independente, não é determinante)"
-            rows={faixas.faixasFbava}
-            faixaAtual={fFbavaAtivado.faixa}
-            ptsAtual={painel.ativado.ptsFBAVA}
-            color={COLORS.fbava}
-          />
-          <MiniFaixaTable
             title="ALTAS"
             rows={faixas.faixasAltas}
-            faixaAtual={painel.ativado.faixaDeterminante}
+            faixaAtual={painel.ativado.faixaALTAS}
             ptsAtual={painel.ativado.ptsAltas}
             color={COLORS.altas}
           />
@@ -579,11 +556,7 @@ export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColabor
             ptsAtual={painel.ativado.ptsAltasPF}
             color={COLORS.altas_pf}
           />
-          <AparelhoFaixaTable
-            faixas={faixas}
-            faixaAtual={painel.ativado.faixaDeterminante}
-            valorAtual={painel.ativado.valorAparelhos}
-          />
+          <ElegibilidadeCard resultado={painel.ativado} />
           <div className="md:col-span-2">
             <AparelhoBonusTable
               bonusRows={faixas.aparelhoBonus}

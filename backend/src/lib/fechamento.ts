@@ -234,12 +234,10 @@ function addResumoColaboradoresSheet(
   const header = headerRow(sheet, [
     "Colaborador",
     FRENTE_LABELS.mv,
-    FRENTE_LABELS.fbava,
     FRENTE_LABELS.altas,
     FRENTE_LABELS.altas_pf,
     FRENTE_LABELS.aparelhos,
-    "Premiação RENOV MV (R$)",
-    "Premiação RENOV FB/AVA (R$)",
+    "Premiação RENOV MV + FB/AVA (R$)",
     "Premiação ALTAS PJ (R$)",
     "Premiação ALTAS PF (R$)",
     "Premiação Aparelhos (R$)",
@@ -251,43 +249,39 @@ function addResumoColaboradoresSheet(
     const row = sheet.addRow([
       c.nome,
       c.ativado.ptsMV,
-      c.ativado.ptsFBAVA,
       c.ativado.ptsAltas,
       c.ativado.ptsAltasPF,
       c.ativado.valorAparelhos,
       c.ativado.valorMV,
-      c.ativado.bonusFBAVA,
       c.ativado.valorALTAS,
       c.ativado.bonusAltasPF,
       c.ativado.bonusAparelhosRS,
       c.ativado.premiacaoFinal,
     ]);
-    row.getCell(6).numFmt = MOEDA_FMT;
-    for (let i = 7; i <= 12; i++) row.getCell(i).numFmt = MOEDA_FMT;
+    row.getCell(5).numFmt = MOEDA_FMT;
+    for (let i = 6; i <= 10; i++) row.getCell(i).numFmt = MOEDA_FMT;
   }
   const lastDataRowNumber = sheet.rowCount;
-  ativarAutoFiltro(sheet, headerRowNumber, lastDataRowNumber, 12);
+  ativarAutoFiltro(sheet, headerRowNumber, lastDataRowNumber, 10);
 
   const totalRow = sheet.addRow([
     "TOTAL DA EQUIPE",
     sum(colaboradores.map((c) => c.ativado.ptsMV)),
-    sum(colaboradores.map((c) => c.ativado.ptsFBAVA)),
     sum(colaboradores.map((c) => c.ativado.ptsAltas)),
     sum(colaboradores.map((c) => c.ativado.ptsAltasPF)),
     sum(colaboradores.map((c) => c.ativado.valorAparelhos)),
     sum(colaboradores.map((c) => c.ativado.valorMV)),
-    sum(colaboradores.map((c) => c.ativado.bonusFBAVA)),
     sum(colaboradores.map((c) => c.ativado.valorALTAS)),
     sum(colaboradores.map((c) => c.ativado.bonusAltasPF)),
     sum(colaboradores.map((c) => c.ativado.bonusAparelhosRS)),
     sum(colaboradores.map((c) => c.ativado.premiacaoFinal)),
   ]);
   totalRow.font = { bold: true };
-  for (let i = 6; i <= 12; i++) totalRow.getCell(i).numFmt = MOEDA_FMT;
+  for (let i = 5; i <= 10; i++) totalRow.getCell(i).numFmt = MOEDA_FMT;
 
   sheet.getColumn(1).width = 30;
-  for (let i = 2; i <= 6; i++) sheet.getColumn(i).width = 18;
-  for (let i = 7; i <= 12; i++) sheet.getColumn(i).width = 24;
+  for (let i = 2; i <= 5; i++) sheet.getColumn(i).width = 18;
+  for (let i = 6; i <= 10; i++) sheet.getColumn(i).width = 24;
 }
 
 function addColaboradorSheet(
@@ -304,8 +298,6 @@ function addColaboradorSheet(
   headerRow(sheet, ["Frente", "Pontos/Valor ativado", "Premiação (R$)"]);
   const rowMV = sheet.addRow([FRENTE_LABELS.mv, c.ativado.ptsMV, c.ativado.valorMV]);
   rowMV.getCell(3).numFmt = MOEDA_FMT;
-  const rowFbava = sheet.addRow([FRENTE_LABELS.fbava, c.ativado.ptsFBAVA, c.ativado.bonusFBAVA]);
-  rowFbava.getCell(3).numFmt = MOEDA_FMT;
   const rowAltas = sheet.addRow([FRENTE_LABELS.altas, c.ativado.ptsAltas, c.ativado.valorALTAS]);
   rowAltas.getCell(3).numFmt = MOEDA_FMT;
   const rowAltasPF = sheet.addRow([FRENTE_LABELS.altas_pf, c.ativado.ptsAltasPF, c.ativado.bonusAltasPF]);
@@ -422,13 +414,11 @@ function addResumoEquipesSheet(
   const header = headerRow(sheet, [
     "Equipe",
     "Supervisor",
-    FRENTE_LABELS.mv,
-    FRENTE_LABELS.fbava,
+    "RENOV. MV + FB/AVA",
     FRENTE_LABELS.altas,
     FRENTE_LABELS.altas_pf,
     FRENTE_LABELS.aparelhos,
-    "Premiação RENOV MV (R$)",
-    "Premiação RENOV FB/AVA (R$)",
+    "Premiação RENOV MV + FB/AVA (R$)",
     "Premiação ALTAS PJ (R$)",
     "Premiação ALTAS PF (R$)",
     "Premiação Aparelhos (R$)",
@@ -441,44 +431,40 @@ function addResumoEquipesSheet(
       eq.nomeEquipe,
       eq.supervisorNome,
       sum(eq.colaboradores.map((c) => c.ativado.ptsMV)),
-      sum(eq.colaboradores.map((c) => c.ativado.ptsFBAVA)),
       sum(eq.colaboradores.map((c) => c.ativado.ptsAltas)),
       sum(eq.colaboradores.map((c) => c.ativado.ptsAltasPF)),
       sum(eq.colaboradores.map((c) => c.ativado.valorAparelhos)),
       sum(eq.colaboradores.map((c) => c.ativado.valorMV)),
-      sum(eq.colaboradores.map((c) => c.ativado.bonusFBAVA)),
       sum(eq.colaboradores.map((c) => c.ativado.valorALTAS)),
       sum(eq.colaboradores.map((c) => c.ativado.bonusAltasPF)),
       sum(eq.colaboradores.map((c) => c.ativado.bonusAparelhosRS)),
       sum(eq.colaboradores.map((c) => c.ativado.premiacaoFinal)),
     ]);
-    row.getCell(7).numFmt = MOEDA_FMT;
-    for (let i = 8; i <= 13; i++) row.getCell(i).numFmt = MOEDA_FMT;
+    row.getCell(6).numFmt = MOEDA_FMT;
+    for (let i = 7; i <= 11; i++) row.getCell(i).numFmt = MOEDA_FMT;
   }
-  ativarAutoFiltro(sheet, headerRowNumber, sheet.rowCount, 13);
+  ativarAutoFiltro(sheet, headerRowNumber, sheet.rowCount, 11);
 
   const totalRow = sheet.addRow([
     "TOTAL GERAL",
     "",
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.ptsMV))),
-    sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.ptsFBAVA))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.ptsAltas))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.ptsAltasPF))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.valorAparelhos))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.valorMV))),
-    sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.bonusFBAVA))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.valorALTAS))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.bonusAltasPF))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.bonusAparelhosRS))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.premiacaoFinal))),
   ]);
   totalRow.font = { bold: true };
-  for (let i = 7; i <= 13; i++) totalRow.getCell(i).numFmt = MOEDA_FMT;
+  for (let i = 6; i <= 11; i++) totalRow.getCell(i).numFmt = MOEDA_FMT;
 
   sheet.getColumn(1).width = 26;
   sheet.getColumn(2).width = 24;
-  for (let i = 3; i <= 7; i++) sheet.getColumn(i).width = 18;
-  for (let i = 8; i <= 13; i++) sheet.getColumn(i).width = 24;
+  for (let i = 3; i <= 6; i++) sheet.getColumn(i).width = 18;
+  for (let i = 7; i <= 11; i++) sheet.getColumn(i).width = 24;
 }
 
 function addEquipeSheet(
@@ -496,13 +482,11 @@ function addEquipeSheet(
   sheet.addRow([]);
   const header = headerRow(sheet, [
     "Colaborador",
-    FRENTE_LABELS.mv,
-    FRENTE_LABELS.fbava,
+    "RENOV. MV + FB/AVA",
     FRENTE_LABELS.altas,
     FRENTE_LABELS.altas_pf,
     FRENTE_LABELS.aparelhos,
-    "Premiação RENOV MV (R$)",
-    "Premiação RENOV FB/AVA (R$)",
+    "Premiação RENOV MV + FB/AVA (R$)",
     "Premiação ALTAS PJ (R$)",
     "Premiação ALTAS PF (R$)",
     "Premiação Aparelhos (R$)",
@@ -514,47 +498,43 @@ function addEquipeSheet(
     const row = sheet.addRow([
       c.nome,
       c.ativado.ptsMV,
-      c.ativado.ptsFBAVA,
       c.ativado.ptsAltas,
       c.ativado.ptsAltasPF,
       c.ativado.valorAparelhos,
       c.ativado.valorMV,
-      c.ativado.bonusFBAVA,
       c.ativado.valorALTAS,
       c.ativado.bonusAltasPF,
       c.ativado.bonusAparelhosRS,
       c.ativado.premiacaoFinal,
     ]);
-    row.getCell(6).numFmt = MOEDA_FMT;
-    for (let i = 7; i <= 12; i++) row.getCell(i).numFmt = MOEDA_FMT;
+    row.getCell(5).numFmt = MOEDA_FMT;
+    for (let i = 6; i <= 10; i++) row.getCell(i).numFmt = MOEDA_FMT;
   }
 
   if (colaboradores.length === 0) {
     sheet.addRow(["Nenhum colaborador nessa equipe."]);
   } else {
-    ativarAutoFiltro(sheet, headerRowNumber, sheet.rowCount, 12);
+    ativarAutoFiltro(sheet, headerRowNumber, sheet.rowCount, 10);
   }
 
   const totalRow = sheet.addRow([
     "TOTAL DA EQUIPE",
     sum(colaboradores.map((c) => c.ativado.ptsMV)),
-    sum(colaboradores.map((c) => c.ativado.ptsFBAVA)),
     sum(colaboradores.map((c) => c.ativado.ptsAltas)),
     sum(colaboradores.map((c) => c.ativado.ptsAltasPF)),
     sum(colaboradores.map((c) => c.ativado.valorAparelhos)),
     sum(colaboradores.map((c) => c.ativado.valorMV)),
-    sum(colaboradores.map((c) => c.ativado.bonusFBAVA)),
     sum(colaboradores.map((c) => c.ativado.valorALTAS)),
     sum(colaboradores.map((c) => c.ativado.bonusAltasPF)),
     sum(colaboradores.map((c) => c.ativado.bonusAparelhosRS)),
     sum(colaboradores.map((c) => c.ativado.premiacaoFinal)),
   ]);
   totalRow.font = { bold: true };
-  for (let i = 6; i <= 12; i++) totalRow.getCell(i).numFmt = MOEDA_FMT;
+  for (let i = 5; i <= 10; i++) totalRow.getCell(i).numFmt = MOEDA_FMT;
 
   sheet.getColumn(1).width = 30;
-  for (let i = 2; i <= 6; i++) sheet.getColumn(i).width = 18;
-  for (let i = 7; i <= 12; i++) sheet.getColumn(i).width = 24;
+  for (let i = 2; i <= 5; i++) sheet.getColumn(i).width = 18;
+  for (let i = 6; i <= 10; i++) sheet.getColumn(i).width = 24;
 }
 
 // Fechamento do Master: uma aba "Resumo" com o total por frente de cada

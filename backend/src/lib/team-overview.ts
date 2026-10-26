@@ -397,13 +397,18 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
       premiacaoLancada: painel.lancado.premiacaoFinal,
       premiacaoAtivada: painel.ativado.premiacaoFinal,
       premiacaoAtivadaPorFrente: {
+        // RENOV. MV já inclui FB/AVA somado (não existe mais bônus separado
+        // de FB/AVA) — o campo "fbava" fica em 0 só para manter o formato.
         mv: painel.ativado.valorMV,
-        fbava: painel.ativado.bonusFBAVA,
+        fbava: 0,
         altas: painel.ativado.valorALTAS,
         altas_pf: painel.ativado.bonusAltasPF,
         aparelhos: painel.ativado.bonusAparelhosRS,
       },
-      faixaAtivada: painel.ativado.faixaDeterminante,
+      // Não existe mais uma faixa única compartilhada entre as frentes —
+      // mostra a menor entre RENOV. MV e ALTAS como indicador geral de
+      // posição na tabela de equipe.
+      faixaAtivada: Math.min(painel.ativado.faixaMV, painel.ativado.faixaALTAS),
       frentes: {
         mv: { lancado: painel.lancado.ptsMV, ativado: painel.ativado.ptsMV },
         fbava: { lancado: painel.lancado.ptsFBAVA, ativado: painel.ativado.ptsFBAVA },

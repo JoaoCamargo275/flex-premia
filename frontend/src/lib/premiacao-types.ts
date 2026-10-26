@@ -8,19 +8,18 @@ export interface ResultadoPremiacao {
   ptsAltas: number;
   ptsAltasPF: number;
   valorAparelhos: number;
+  blAtivadas: number;
 
   faixaMV: number;
   faixaALTAS: number;
   faixaAltasPF: number;
-  faixaAparelhosIndicador: number;
-  faixaFinal: number;
-  faixaDeterminante: number;
   isZero: boolean;
+  /** true se bateu as duas travas (6 BL + R$6.000 em Aparelhos) no período. */
+  destravou: boolean;
   advance: boolean;
 
   valorMV: number;
   valorALTAS: number;
-  bonusFBAVA: number;
   bonusAparelhosRS: number;
   bonusAltasPF: number;
   altasPFLiberado: boolean;

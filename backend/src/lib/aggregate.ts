@@ -93,17 +93,32 @@ export function dentroDoPeriodo(d: Date | null, period: PeriodFilter): boolean {
 // "solto", igual ao de antes dessa regra).
 // Devolve a data a usar nos filtros de período pro "ativado", ou null se o
 // item não está ativo (não conta pra ativado em período nenhum).
+// semCarencia=true pula a regra dos 2 meses e sempre conta pelo mês real de
+// ativação — usado para Internet Fixa (BL) e Aparelhos (ver
+// ehSemCarencia()), que não entram no fluxo de carência dos demais produtos.
 export function dataConsideradaAtivacao(
   saleCreatedAt: Date,
   ativo: boolean,
-  dataAtivacao: Date | null
+  dataAtivacao: Date | null,
+  semCarencia: boolean = false
 ): Date | null {
   if (!ativo || !dataAtivacao) return null;
+  if (semCarencia) return dataAtivacao;
   const regMonthIndex = saleCreatedAt.getFullYear() * 12 + saleCreatedAt.getMonth();
   const actMonthIndex = dataAtivacao.getFullYear() * 12 + dataAtivacao.getMonth();
   const diff = actMonthIndex - regMonthIndex;
   if (diff === 0 || diff === 1) return saleCreatedAt;
   return dataAtivacao;
+}
+
+// Internet Fixa (avulso/combo) e Aparelhos são as únicas frentes que NÃO
+// seguem a carência de "registrado no mês X, ativado em X ou X+1 conta pra
+// X" — para essas duas, conta sempre pelo mês em que realmente ativou.
+const CATEGORIAS_INTERNET_FIXA = new Set(["fixa", "fixa_combo"]);
+export function ehSemCarencia(indicator: string, categoryId: string | null | undefined): boolean {
+  if (indicator === "APARELHOS") return true;
+  if (indicator === "ALTAS" && categoryId && CATEGORIAS_INTERNET_FIXA.has(categoryId)) return true;
+  return false;
 }
 
 async function sumPontosPorIndicador(
@@ -124,6 +139,7 @@ async function sumPontosPorIndicador(
       ativo: true,
       dataAtivacao: true,
       sale: { select: { createdAt: true } },
+      catalogItem: { select: { categoryId: true } },
     },
   });
 
@@ -132,13 +148,40 @@ async function sumPontosPorIndicador(
 
   for (const it of items) {
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    const semCarencia = ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (contaLancado) somarNoAcc(lancado, it.indicator, it.pointsTotal, it.valorReais);
     if (contaAtivado) somarNoAcc(ativado, it.indicator, it.pointsTotal, it.valorReais);
   }
 
   return { lancado, ativado };
+}
+
+// Conta quantas "BLs" (itens de Internet Fixa — avulso + combo) foram
+// ativadas dentro do período, já pelo mês real de ativação (sem carência —
+// ver ehSemCarencia). Usada pela trava de "mínimo 6 BL no mês".
+async function contarBLsAtivadas(colaboradorId: string, period: PeriodFilter): Promise<number> {
+  const range = rangeDoPeriodo(period);
+
+  const items = await prisma.saleItem.findMany({
+    where: {
+      sale: { colaboradorId, cancelado: false },
+      indicator: "ALTAS",
+      ativo: true,
+      catalogItem: { categoryId: { in: ["fixa", "fixa_combo"] } },
+      ...(range ? { dataAtivacao: range } : {}),
+    },
+    select: { quantity: true, dataAtivacao: true },
+  });
+
+  let total = 0;
+  for (const it of items) {
+    if (!it.dataAtivacao) continue;
+    if (range && !dentroDoPeriodo(it.dataAtivacao, period)) continue;
+    total += it.quantity;
+  }
+  return total;
 }
 
 async function getFaltouInjustificada(colaboradorId: string, period: PeriodFilter) {
@@ -227,6 +270,7 @@ export async function getProdutosPorFrente(
       ativo: true,
       dataAtivacao: true,
       sale: { select: { createdAt: true } },
+      catalogItem: { select: { categoryId: true } },
     },
   });
 
@@ -242,7 +286,8 @@ export async function getProdutosPorFrente(
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    const semCarencia = ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (!contaLancado && !contaAtivado) continue;
 
@@ -282,13 +327,17 @@ export async function getPainelColaborador(
   period: PeriodFilter = {}
 ): Promise<PainelColaborador> {
   const tables = await getFaixaTables();
-  const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou] = await Promise.all([
+  const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou, blAtivadas] = await Promise.all([
     sumPontosPorIndicador(colaboradorId, period),
     getFaltouInjustificada(colaboradorId, period),
+    contarBLsAtivadas(colaboradorId, period),
   ]);
 
-  const lancadoInput: PontosAgregados = { ...lancadoAgg, faltouInjustificada: false };
-  const ativadoInput: PontosAgregados = { ...ativadoAgg, faltouInjustificada: faltou };
+  // A trava de "6 BL no mês" é sempre sobre o que foi efetivamente
+  // ativado — por isso o mesmo valor entra tanto no lado "lançado" quanto
+  // no "ativado" (não existe um "BL lançada" separado).
+  const lancadoInput: PontosAgregados = { ...lancadoAgg, blAtivadas, faltouInjustificada: false };
+  const ativadoInput: PontosAgregados = { ...ativadoAgg, blAtivadas, faltouInjustificada: faltou };
 
   return {
     lancado: calcularPremiacao(lancadoInput, tables),
