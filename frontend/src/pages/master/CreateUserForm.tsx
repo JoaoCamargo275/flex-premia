@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../../lib/api";
 import { ROLES, type Role, PERFIS, PERFIL_LABELS, type Perfil } from "../../lib/types";
+import { DateCalendarPicker } from "../../components/PeriodFilterForm";
 
 const ROLE_LABELS: Record<Role, string> = {
   MASTER: "Master",
@@ -103,15 +104,7 @@ export function CreateUserForm({
       )}
       {role === "COLABORADOR" && perfil === "RENOVACAO_FIXA" && (
         <div className="flex flex-col gap-1">
-          <label className="text-xs uppercase tracking-wide text-ink-dim">Início na Renovação Fixa</label>
-          <input
-            type="date"
-            className="input"
-            value={perfilDesde}
-            min="2015-01-01"
-            max={`${new Date().getFullYear() + 1}-12-31`}
-            onChange={(e) => setPerfilDesde(e.target.value)}
-          />
+          <DateCalendarPicker label="Início na Renovação Fixa" value={perfilDesde} onChange={setPerfilDesde} />
           <span className="text-[.7rem] text-ink-dim">
             Preenchendo, conta os 3 meses de rampagem (régua com menos pontos exigidos). Em branco, começa direto na régua normal, sem rampagem.
           </span>

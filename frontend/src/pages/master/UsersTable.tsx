@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { api } from "../../lib/api";
 import { PERFIS, PERFIL_LABELS, type Perfil } from "../../lib/types";
+import { DateCalendarPicker } from "../../components/PeriodFilterForm";
 
 export interface UserRow {
   id: string;
@@ -19,22 +20,6 @@ export interface UserRow {
 function paraInputDate(iso: string | null): string {
   if (!iso) return "";
   return iso.slice(0, 10);
-}
-
-// Limites do <input type="date"> de "Início na Renovação Fixa" — sem isso,
-// o navegador deixa digitar (e disparar onChange) com um ano pela metade,
-// tipo "0002" quando a pessoa ainda não terminou de digitar "2026". O
-// backend também valida isso (ver parsePerfilDesde em routes/master.ts),
-// mas travar aqui evita até a tentativa de salvar um valor assim.
-const ANO_MIN_PERFIL_DESDE = 2015;
-const DATA_MIN_PERFIL_DESDE = `${ANO_MIN_PERFIL_DESDE}-01-01`;
-const DATA_MAX_PERFIL_DESDE = `${new Date().getFullYear() + 1}-12-31`;
-
-/** true só quando o valor já é uma data COMPLETA (YYYY-MM-DD, 4 dígitos de ano) dentro do intervalo esperado. */
-function dataCompletaValida(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const ano = Number(value.slice(0, 4));
-  return ano >= ANO_MIN_PERFIL_DESDE && ano <= new Date().getFullYear() + 1;
 }
 
 const ROLE_LABELS: Record<UserRow["role"], string> = {
@@ -152,19 +137,13 @@ export function UsersTable({
                       {u.perfil === "RENOVACAO_FIXA" && (
                         <div className="flex items-center gap-1">
                           <span className="text-[.62rem] text-ink-dim whitespace-nowrap">Início:</span>
-                          <input
-                            type="date"
-                            className="input py-1 text-xs"
-                            defaultValue={paraInputDate(u.perfilDesde)}
-                            min={DATA_MIN_PERFIL_DESDE}
-                            max={DATA_MAX_PERFIL_DESDE}
-                            disabled={pending}
-                            title="Data de entrada na Renovação Fixa — conta os meses de rampagem"
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              // Só salva quando a data estiver completa (ou vazia, pra limpar) — evita
-                              // mandar pro backend um ano digitado pela metade (ver dataCompletaValida).
-                              if (value !== "" && !dataCompletaValida(value)) return;
+                          {/* Calendário clicável em vez de <input type="date"> digitado — elimina de
+                              vez o bug de ano digitado pela metade (ex.: "0002") virando onChange
+                              no meio da digitação. Só seleciona dias completos, por clique. */}
+                          <DateCalendarPicker
+                            value={paraInputDate(u.perfilDesde)}
+                            onChange={(value) => {
+                              if (pending) return;
                               run(() => api.patch(`/api/master/usuarios/${u.id}`, { perfilDesde: value || null }));
                             }}
                           />

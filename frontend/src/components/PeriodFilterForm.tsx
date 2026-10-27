@@ -52,7 +52,8 @@ export function DateCalendarPicker({
   value,
   onChange,
 }: {
-  label: string;
+  /** Omitido = sem rótulo próprio em cima (útil quando já existe um label ao lado, ex.: tabelas). */
+  label?: string;
   value: string; // "YYYY-MM-DD" ou ""
   onChange: (value: string) => void;
 }) {
@@ -102,7 +103,7 @@ export function DateCalendarPicker({
 
   return (
     <div className="flex flex-col gap-1 relative" ref={ref}>
-      <label className="text-xs uppercase tracking-wide text-ink-dim">{label}</label>
+      {label && <label className="text-xs uppercase tracking-wide text-ink-dim">{label}</label>}
       <button
         type="button"
         onClick={abrir}
