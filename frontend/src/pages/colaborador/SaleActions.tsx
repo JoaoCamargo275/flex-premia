@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
-import { SALE_STATUS_SUGESTOES, RENOV_TIPOS_POR_INDICADOR, RENOV_TIPO_LABELS } from "../../lib/types";
-import type { RenovTipo } from "../../lib/types";
-import { useAuth } from "../../lib/auth-context";
+import { SALE_STATUS_SUGESTOES } from "../../lib/types";
 import type { CatalogData, CatalogItemRow } from "./VendaCart";
 
 function pad2(n: number): string {
@@ -297,15 +295,11 @@ type FrenteKey = (typeof FRENTES_CATALOGO)[number]["key"];
 // já existe — evita ter que excluir e recriar a venda inteira quando um
 // item foi esquecido na hora do lançamento original.
 export function AddProductForm({ saleId, onChanged }: { saleId: string; onChanged: () => void }) {
-  const { user } = useAuth();
-  const ehRenovFixa = user?.perfil === "RENOVACAO_FIXA";
   const [open, setOpen] = useState(false);
   const [catalog, setCatalog] = useState<CatalogData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [frente, setFrente] = useState<FrenteKey>("RENOV_MV");
   const [catalogItemId, setCatalogItemId] = useState("");
-  const [renovTipo, setRenovTipo] = useState<RenovTipo | "">("");
-  const opcoesTipo = ehRenovFixa ? RENOV_TIPOS_POR_INDICADOR[frente] ?? [] : [];
   const [qtyTexto, setQtyTexto] = useState("1");
   const [aparelhoNome, setAparelhoNome] = useState("");
   const [aparelhoValor, setAparelhoValor] = useState("");
@@ -335,7 +329,6 @@ export function AddProductForm({ saleId, onChanged }: { saleId: string; onChange
 
   useEffect(() => {
     setCatalogItemId(itensDaFrente[0]?.id ?? "");
-    setRenovTipo("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frente, catalog]);
 
@@ -360,16 +353,11 @@ export function AddProductForm({ saleId, onChanged }: { saleId: string; onChange
           setError("Escolha um item e uma quantidade válida.");
           return;
         }
-        if (opcoesTipo.length > 0 && !renovTipo) {
-          setError("Selecione o tipo (UP/PD/DW) do item.");
-          return;
-        }
         setPending(true);
         await api.post(`/api/sales/${saleId}/items`, {
-          items: [{ catalogItemId, indicator: frente, label: "", quantity: qty, renovTipo: renovTipo || undefined }],
+          items: [{ catalogItemId, indicator: frente, label: "", quantity: qty }],
         });
         setQtyTexto("1");
-        setRenovTipo("");
       }
       onChanged();
       setOpen(false);
@@ -420,20 +408,6 @@ export function AddProductForm({ saleId, onChanged }: { saleId: string; onChange
                     </option>
                   ))}
                 </select>
-                {opcoesTipo.length > 0 && (
-                  <select
-                    value={renovTipo}
-                    onChange={(e) => setRenovTipo(e.target.value as RenovTipo | "")}
-                    className="input py-1 text-xs w-auto"
-                  >
-                    <option value="">Tipo...</option>
-                    {opcoesTipo.map((t) => (
-                      <option key={t} value={t}>
-                        {RENOV_TIPO_LABELS[t]}
-                      </option>
-                    ))}
-                  </select>
-                )}
                 <input
                   type="text"
                   inputMode="numeric"

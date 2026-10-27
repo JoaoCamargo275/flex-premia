@@ -28,7 +28,10 @@ datasource db {
 //     produtos de uma mesma venda costumam ativar em datas diferentes. O
 //     cancelamento continua sendo por venda inteira (Sale.cancelado).
 //   Indicator: RENOV_MV | RENOV_FB | RENOV_AVA_DADOS | RENOV_AVA_VOZ | ALTAS | ALTAS_PF | APARELHOS
-//   SaleItem.renovTipo (só perfil RENOVACAO_FIXA, só RENOV_MV/RENOV_FB): UP | PD | DW
+//   Perfil RENOVACAO_FIXA não precisa de campo extra pra UP/PD/DW: o próprio
+//     catálogo de RENOV_MV/RENOV_FB já tem um item pra cada um (ver seed.ts),
+//     com pontos iguais aos da régua desse perfil — o colaborador já escolhe
+//     isso ao marcar o item, igual a qualquer outro produto do catálogo.
 //   FaixaTable.indicator também usa: RENOV_FIXA (régua única do perfil
 //     Renovação Fixa) e BL_BONUS_RENOV_FIXA (degraus do bônus de BL desse
 //     perfil — reaproveita as colunas pts/valor da tabela como "qtd mínima
@@ -155,11 +158,6 @@ model SaleItem {
   pointsTotal   Int          // quantity * pointsUnit (0 para Aparelhos)
   valorReais    Float?       // usado apenas para itens de Aparelhos (valor vendido)
   observacao    String?      // observação livre sobre o item (usado principalmente em Aparelhos)
-  // Perfil Renovação Fixa: classificação UP | PD | DW escolhida pelo
-  // colaborador em vendas de RENOV_MV/RENOV_FB — define pointsUnit nesse
-  // perfil (ver RENOV_FIXA_PONTOS em src/lib/types.ts). Null para os demais
-  // casos (colaborador Consultivo, ou indicador fora de RENOV_MV/RENOV_FB).
-  renovTipo     String?
 
   // Cada produto tem seu próprio ciclo de ativação — dois produtos da mesma
   // venda podem ativar em datas diferentes, então o "ativo" (o que conta

@@ -4,9 +4,7 @@ import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
 import { maskCnpj, isValidCnpj, maskCpf, isValidCpf } from "../../lib/cnpj";
 import { useMonthFilter } from "../../lib/month-filter-context";
-import { useAuth } from "../../lib/auth-context";
-import type { Indicator, RenovTipo } from "../../lib/types";
-import { RENOV_TIPOS_POR_INDICADOR, RENOV_TIPO_LABELS, RENOV_FIXA_PONTOS } from "../../lib/types";
+import type { Indicator } from "../../lib/types";
 
 export interface CatalogItemRow {
   id: string;
@@ -35,7 +33,6 @@ interface CartItemInput {
   label: string;
   quantity: number;
   observacao?: string;
-  renovTipo?: RenovTipo;
 }
 
 interface AparelhoLinha {
@@ -144,16 +141,9 @@ function hojeIso(): string {
 
 export function VendaCart({ catalog }: { catalog: CatalogData }) {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  // Perfil Renovação Fixa: cada venda de RENOV. MV/RENOV. FB precisa ser
-  // classificada como UP/PD/DW — é essa escolha, não o catálogo, que define
-  // os pontos (ver RENOV_FIXA_PONTOS). Demais perfis seguem como sempre.
-  const ehRenovFixa = user?.perfil === "RENOVACAO_FIXA";
   const { label: mesLabel, isMesAtual, from: mesFrom, to: mesTo } = useMonthFilter();
   const [tab, setTab] = useState<Tab>("mv");
   const [qty, setQty] = useState<Record<string, number>>({});
-  const [renovTipo, setRenovTipo] = useState<Record<string, RenovTipo | "">>({});
-  const setRenovTipoFor = (id: string, v: RenovTipo | "") => setRenovTipo((prev) => ({ ...prev, [id]: v }));
   const [altasBusca, setAltasBusca] = useState("");
   const [altasPFBusca, setAltasPFBusca] = useState("");
   const [aparelhoNome, setAparelhoNome] = useState("");
@@ -188,27 +178,20 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
       qty: number;
       points: number;
       subtotal: number;
-      renovTipo?: RenovTipo;
-      renovTipoFaltando?: boolean;
     }[] = [];
 
     const pushGroup = (indicator: Indicator, items: CatalogItemRow[], labelPrefix?: string) => {
-      const pesosRenovFixa = ehRenovFixa ? RENOV_FIXA_PONTOS[indicator] : undefined;
       for (const item of items) {
         const q = qty[item.id] || 0;
         if (q > 0) {
-          const tipo = renovTipo[item.id] || "";
-          const points = pesosRenovFixa ? pesosRenovFixa[tipo as RenovTipo] ?? 0 : item.points;
           rows.push({
             key: item.id,
             catalogItemId: item.id,
             indicator,
             label: labelPrefix ? `${labelPrefix} ${item.label}` : item.label,
             qty: q,
-            points,
-            subtotal: q * points,
-            renovTipo: tipo || undefined,
-            renovTipoFaltando: !!pesosRenovFixa && !tipo,
+            points: item.points,
+            subtotal: q * item.points,
           });
         }
       }
@@ -228,7 +211,7 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
       pushGroup("ALTAS_PF", cat.items, cat.categoryId ? ALTAS_PF_CATEGORY_PREFIX[cat.categoryId] : undefined);
 
     return rows;
-  }, [qty, catalog, renovTipo, ehRenovFixa]);
+  }, [qty, catalog]);
 
   const altasFilteredCount = useMemo(() => {
     const q = altasBusca.trim().toLowerCase();
@@ -279,12 +262,9 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
     setAparelhos((prev) => prev.filter((a) => a.id !== id));
   }
 
-  const faltaRenovTipo = cartItems.some((r) => r.renovTipoFaltando);
-
   const canSubmit =
     clienteNome.trim().length > 1 &&
     !misturouPFeNaoPF &&
-    !faltaRenovTipo &&
     (temItemPF ? isValidCpf(cpfDigits) : isValidCnpj(cnpjDigits)) &&
     (cartItems.length > 0 || aparelhos.length > 0) &&
     !pending;
@@ -296,7 +276,6 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
       indicator: r.indicator,
       label: r.label,
       quantity: r.qty,
-      renovTipo: r.renovTipo,
     }));
     for (const a of aparelhos) {
       const valor = parseFloat(a.valor.replace(/\./g, "").replace(",", ".")) || 0;
@@ -358,39 +337,11 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
 
         <div className="card p-4">
           {tab === "mv" && (
-            <>
-              {ehRenovFixa && (
-                <p className="text-xs text-ink-dim mb-3">
-                  Classifique cada venda como UP/PD/DW — isso é o que define os pontos no seu perfil (Renovação Fixa).
-                </p>
-              )}
-              <ItemTable
-                title="RENOV. MV — Renovação Móvel"
-                items={catalog.RENOV_MV}
-                qty={qty}
-                setQty={setQtyFor}
-                renovIndicator={ehRenovFixa ? "RENOV_MV" : undefined}
-                renovTipo={renovTipo}
-                setRenovTipo={setRenovTipoFor}
-              />
-            </>
+            <ItemTable title="RENOV. MV — Renovação Móvel" items={catalog.RENOV_MV} qty={qty} setQty={setQtyFor} />
           )}
           {tab === "fbava" && (
             <div className="flex flex-col gap-5">
-              {ehRenovFixa && (
-                <p className="text-xs text-ink-dim">
-                  RENOV. FB: classifique cada venda como UP/PD — isso é o que define os pontos no seu perfil (Renovação Fixa).
-                </p>
-              )}
-              <ItemTable
-                title="RENOV. FB — banda larga fixa"
-                items={catalog.RENOV_FB}
-                qty={qty}
-                setQty={setQtyFor}
-                renovIndicator={ehRenovFixa ? "RENOV_FB" : undefined}
-                renovTipo={renovTipo}
-                setRenovTipo={setRenovTipoFor}
-              />
+              <ItemTable title="RENOV. FB — banda larga fixa" items={catalog.RENOV_FB} qty={qty} setQty={setQtyFor} />
               <ItemTable title="RENOV. AVA — Dados" items={catalog.RENOV_AVA_DADOS} qty={qty} setQty={setQtyFor} />
               <ItemTable title="RENOV. AVA — Voz" items={catalog.RENOV_AVA_VOZ} qty={qty} setQty={setQtyFor} />
             </div>
@@ -614,11 +565,6 @@ export function VendaCart({ catalog }: { catalog: CatalogData }) {
               dois grupos ou registre em vendas separadas.
             </p>
           )}
-          {faltaRenovTipo && (
-            <p className="text-xs rounded-lg px-2.5 py-1.5" style={{ background: "rgba(255,77,109,.1)", color: "var(--accent-3)" }}>
-              ⚠️ Selecione o tipo (UP/PD/DW) de cada item de RENOV. MV/FB antes de registrar.
-            </p>
-          )}
           <ul className="flex flex-col gap-2 max-h-64 overflow-y-auto">
             {cartItems.map((r) => (
               <li key={r.key} className="flex justify-between text-sm">
@@ -669,23 +615,13 @@ function ItemTable({
   qty,
   setQty,
   withPrice,
-  renovIndicator,
-  renovTipo,
-  setRenovTipo,
 }: {
   title: string;
   items: CatalogItemRow[];
   qty: Record<string, number>;
   setQty: (id: string, v: number) => void;
   withPrice?: boolean;
-  /** Quando definido (perfil Renovação Fixa), mostra o seletor UP/PD/DW por linha e os pontos vêm dele, não do catálogo. */
-  renovIndicator?: Indicator;
-  renovTipo?: Record<string, RenovTipo | "">;
-  setRenovTipo?: (id: string, v: RenovTipo | "") => void;
 }) {
-  const opcoesTipo = renovIndicator ? RENOV_TIPOS_POR_INDICADOR[renovIndicator] ?? [] : [];
-  const pesos = renovIndicator ? RENOV_FIXA_PONTOS[renovIndicator] : undefined;
-
   return (
     <div>
       <div className="text-sm font-bold mb-2">{title}</div>
@@ -694,7 +630,6 @@ function ItemTable({
           <tr className="text-left text-ink-dim text-xs uppercase">
             <th className="py-1">Item</th>
             {withPrice && <th className="py-1">Preço</th>}
-            {renovIndicator && <th className="py-1">Tipo</th>}
             <th className="py-1">Pontos</th>
             <th className="py-1">Qtd.</th>
           </tr>
@@ -702,30 +637,11 @@ function ItemTable({
         <tbody>
           {items.map((item) => {
             const q = qty[item.id] || 0;
-            const tipoAtual = renovTipo?.[item.id] ?? "";
-            const pontosExibidos = pesos ? pesos[tipoAtual as RenovTipo] ?? null : item.points;
             return (
               <tr key={item.id} className="border-t border-white/5">
                 <td className="py-2">{item.label}</td>
                 {withPrice && <td className="py-2 text-ink-dim text-xs">{item.price != null ? fmtBRL(item.price) : "—"}</td>}
-                {renovIndicator && (
-                  <td className="py-2">
-                    <select
-                      className="input py-1 text-xs"
-                      value={tipoAtual}
-                      onChange={(e) => setRenovTipo?.(item.id, e.target.value as RenovTipo | "")}
-                    >
-                      <option value="">Selecione...</option>
-                      {opcoesTipo.map((t) => (
-                        <option key={t} value={t}>
-                          {RENOV_TIPO_LABELS[t]}
-                        </option>
-                      ))}
-                    </select>
-                    {q > 0 && !tipoAtual && <div className="text-[.65rem] text-accent-3 mt-1">Obrigatório</div>}
-                  </td>
-                )}
-                <td className="py-2 text-accent-2 font-bold">{pontosExibidos ?? "—"}</td>
+                <td className="py-2 text-accent-2 font-bold">{item.points}</td>
                 <td className="py-2">
                   <QtyInput value={q} onChange={(v) => setQty(item.id, v)} />
                 </td>

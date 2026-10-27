@@ -57,23 +57,3 @@ export const INDICATOR_LABELS: Record<Indicator, string> = {
 
 // Faixa de pontuação agrupada para exibição (FB/AVA soma os 3 sub-indicadores)
 export type FaixaGroup = "RENOV_MV" | "RENOV_FBAVA" | "ALTAS" | "ALTAS_PF";
-
-// Perfil RENOVAÇÃO FIXA: o colaborador classifica CADA venda de RENOV_MV/
-// RENOV_FB como UP/PD/DW (mesmo sentido do Consultivo: Upsell/Padrão/
-// Downsell), e é essa classificação — não o catálogo — que define os pontos
-// da venda (ver calculo-premiacao.ts/aggregate.ts e sales.ts). RENOV_FB não
-// tem DW. Produtos/pontos normais do catálogo continuam valendo para as
-// demais frentes (ALTAS, etc.) e para colaboradores Consultivo.
-export const RENOV_TIPOS = ["UP", "PD", "DW"] as const;
-export type RenovTipo = (typeof RENOV_TIPOS)[number];
-export const RENOV_TIPO_LABELS: Record<RenovTipo, string> = {
-  UP: "Upsell (UP)",
-  PD: "Padrão (PD)",
-  DW: "Downsell (DW)",
-};
-// Pontos por unidade, por indicador + tipo — planilha "Premiação OTE Flex",
-// aba NOVO_OTE_Renov-OUT26 (linha 4: MÓVEL 10/7/4, FIXA 20/14).
-export const RENOV_FIXA_PONTOS: Record<string, Partial<Record<RenovTipo, number>>> = {
-  RENOV_MV: { UP: 10, PD: 7, DW: 4 },
-  RENOV_FB: { UP: 20, PD: 14 },
-};

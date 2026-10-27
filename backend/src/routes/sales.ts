@@ -2,8 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { requireAuth, requireRole, type AuthedRequest } from "../auth/middleware";
 import { isValidCnpj, isValidCpf, onlyDigits } from "../lib/cnpj";
-import type { Indicator, RenovTipo } from "../lib/types";
-import { RENOV_FIXA_PONTOS } from "../lib/types";
+import type { Indicator } from "../lib/types";
 import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 import { getMetasProgresso } from "../lib/metas";
@@ -18,8 +17,6 @@ interface CartItemInput {
   label: string;
   quantity: number;
   observacao?: string;
-  /** Perfil Renovação Fixa: classificação UP/PD/DW da venda (ver RENOV_FIXA_PONTOS). */
-  renovTipo?: RenovTipo;
 }
 
 // Dentro de ALTAS existem várias categorias com planos de nome parecido
@@ -54,17 +51,16 @@ const ALTAS_PF_CATEGORY_PREFIX: Record<string, string> = {
 };
 
 // Resolve pointsUnit + label (+ prefixo de categoria) de um item do
-// carrinho. Perfil Renovação Fixa: para RENOV_MV/RENOV_FB, os pontos vêm da
-// classificação UP/PD/DW escolhida pelo colaborador (RENOV_FIXA_PONTOS), não
-// do catálogo — as demais frentes (ex.: ALTAS) continuam pelo catálogo
-// normalmente, igual ao perfil Consultivo.
+// carrinho, direto do catálogo — igual para todos os perfis. No perfil
+// Renovação Fixa, a classificação UP/PD/DW de RENOV. MV/FB já é o próprio
+// item do catálogo que o colaborador escolhe (ex.: "UP", "Padrão", "Down"),
+// não uma escolha à parte — não tem nenhum campo extra pra resolver aqui.
 function resolverPontosELabel(
   item: CartItemInput,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- registro do Prisma (CatalogItem); `any` evita
   // depender da geração do client aqui, que falha neste sandbox (ver notas de sessão sobre npx prisma generate).
-  catalogItem: any,
-  ehRenovFixa: boolean
-): { pointsUnit: number; label: string; renovTipo: RenovTipo | null } {
+  catalogItem: any
+): { pointsUnit: number; label: string } {
   let label = catalogItem ? catalogItem.label : item.label;
   if (item.indicator === "ALTAS" && catalogItem?.categoryId) {
     const prefixo = ALTAS_CATEGORY_PREFIX[catalogItem.categoryId];
@@ -75,17 +71,7 @@ function resolverPontosELabel(
     if (prefixo) label = `${prefixo} ${label}`;
   }
 
-  const pesos = ehRenovFixa ? RENOV_FIXA_PONTOS[item.indicator] : undefined;
-  if (pesos) {
-    const tipo = item.renovTipo;
-    if (!tipo || !(tipo in pesos)) {
-      const opcoes = item.indicator === "RENOV_MV" ? "UP/PD/DW" : "UP/PD";
-      throw new Error(`Selecione o tipo (${opcoes}) para ${label}.`);
-    }
-    return { pointsUnit: pesos[tipo]!, label, renovTipo: tipo };
-  }
-
-  return { pointsUnit: catalogItem ? catalogItem.points : 0, label, renovTipo: null };
+  return { pointsUnit: catalogItem ? catalogItem.points : 0, label };
 }
 
 // O colaborador registra as vendas mês a mês — o calendariozinho ao lado do
@@ -171,11 +157,6 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
       : [];
     const catalogMap = new Map(catalogItems.map((c) => [c.id, c]));
 
-    // Perfil Renovação Fixa: pontos de RENOV_MV/RENOV_FB vêm da classificação
-    // UP/PD/DW escolhida pelo colaborador em cada venda, não do catálogo.
-    const colaborador = await prisma.user.findUnique({ where: { id: user.sub }, select: { perfil: true } });
-    const ehRenovFixa = colaborador?.perfil === "RENOVACAO_FIXA";
-
     const itemsData = input.items.map((item) => {
       if (item.indicator === "APARELHOS") {
         const valor = Number(item.quantity) || 0;
@@ -196,7 +177,7 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
       const qty = Number(item.quantity) || 0;
       if (qty <= 0) throw new Error(`Quantidade inválida para ${item.label}.`);
       const catalogItem = item.catalogItemId ? catalogMap.get(item.catalogItemId) : undefined;
-      const { pointsUnit, label, renovTipo } = resolverPontosELabel(item, catalogItem, ehRenovFixa);
+      const { pointsUnit, label } = resolverPontosELabel(item, catalogItem);
       return {
         indicator: item.indicator,
         catalogItemId: item.catalogItemId,
@@ -205,7 +186,6 @@ salesRouter.post("/", async (req: AuthedRequest, res) => {
         pointsUnit,
         pointsTotal: Math.round(qty * pointsUnit),
         valorReais: null,
-        renovTipo,
         status: "Pendente",
       };
     });
@@ -388,9 +368,6 @@ salesRouter.post("/:saleId/items", async (req: AuthedRequest, res) => {
       : [];
     const catalogMap = new Map(catalogItems.map((c) => [c.id, c]));
 
-    const colaborador = await prisma.user.findUnique({ where: { id: user.sub }, select: { perfil: true } });
-    const ehRenovFixa = colaborador?.perfil === "RENOVACAO_FIXA";
-
     const itemsData = input.items.map((item) => {
       if (item.indicator === "APARELHOS") {
         const valor = Number(item.quantity) || 0;
@@ -412,7 +389,7 @@ salesRouter.post("/:saleId/items", async (req: AuthedRequest, res) => {
       const qty = Number(item.quantity) || 0;
       if (qty <= 0) throw new Error(`Quantidade inválida para ${item.label}.`);
       const catalogItem = item.catalogItemId ? catalogMap.get(item.catalogItemId) : undefined;
-      const { pointsUnit, label, renovTipo } = resolverPontosELabel(item, catalogItem, ehRenovFixa);
+      const { pointsUnit, label } = resolverPontosELabel(item, catalogItem);
       return {
         saleId: sale.id,
         indicator: item.indicator,
@@ -422,7 +399,6 @@ salesRouter.post("/:saleId/items", async (req: AuthedRequest, res) => {
         pointsUnit,
         pointsTotal: Math.round(qty * pointsUnit),
         valorReais: null,
-        renovTipo,
         status: "Pendente",
       };
     });
