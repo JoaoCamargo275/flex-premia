@@ -262,6 +262,7 @@ masterRouter.post("/impersonate/:id", async (req: AuthedRequest, res) => {
         name: alvo.name,
         email: alvo.email,
         role: alvo.role,
+        perfil: alvo.role === "COLABORADOR" ? alvo.perfil : null,
         teamId: alvo.teamId,
         mustChangePassword: alvo.mustChangePassword,
       },

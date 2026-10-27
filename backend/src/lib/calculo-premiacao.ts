@@ -30,6 +30,11 @@
  *   pontuação tem teto (sem teto, o percentual da última faixa fica
  *   travado e o valor sobe proporcional aos pontos); falta injustificada
  *   zera toda a premiação do período.
+ *
+ * Perfil RENOVAÇÃO FIXA (colaboradores com User.perfil="RENOVACAO_FIXA")
+ * usa calcularPremiacaoRenovFixa() — régua própria, pool único de pontos,
+ * sem o cutover OUT/2026 acima (perfil novo, sem histórico "antigo"). Ver
+ * comentário na própria função.
  */
 
 export interface FaixaRow {
@@ -58,6 +63,10 @@ export const MAX_FAIXA = 8;
 export const MAX_FAIXA_ANTIGA = 6;
 export const BL_MINIMO_MES = 6;
 export const APARELHOS_MINIMO_MES = 6000;
+
+// Perfil RENOVAÇÃO FIXA (planilha "Premiação OTE Flex", aba NOVO_OTE_Renov-OUT26).
+export const APARELHO_ADVANCE_THRESHOLD_RENOV_FIXA = 20000;
+export const MAX_FAIXA_RENOV_FIXA = 8;
 
 export function faixaAlcancada(faixasArr: FaixaRow[], pts: number): FaixaRow {
   let atual = faixasArr[0];
@@ -98,6 +107,18 @@ export function bonusAparelhoPercent(bonusArr: AparelhoBonusRow[], valor: number
   return atual.mult;
 }
 
+// Bônus de BL (Renovação Fixa) — degraus por QUANTIDADE de BL ativada no
+// período (não é percentual): atinge X BLs, ganha o valor fixo daquele
+// degrau. Usa FaixaRow "emprestado" (pts = qtd mínima de BL, valor = R$ do
+// degrau) — ver FaixaTables.blBonusRenovFixa.
+export function bonusBLDegrau(rows: FaixaRow[], qtdBL: number): number {
+  let atual = 0;
+  for (const r of rows) {
+    if (r.faixa !== 0 && qtdBL >= r.pts) atual = r.valor;
+  }
+  return atual;
+}
+
 export interface PontosAgregados {
   /** RENOV. MV puro (sem FB/AVA ainda somado — a soma acontece dentro de calcularPremiacao). */
   ptsMV: number;
@@ -122,6 +143,9 @@ export interface FaixaTables {
   /** Réguas antigas de RENOV. MV e ALTAS (antes de OUT/2026), preservadas à parte — ver calcularPremiacaoAntiga. */
   faixasMVAntiga: FaixaRow[];
   faixasAltasAntiga: FaixaRow[];
+  /** Perfil Renovação Fixa — régua única (pool RENOV. MV + RENOV. FB + ALTAS) e degraus de bônus de BL. */
+  faixasRenovFixa: FaixaRow[];
+  blBonusRenovFixa: FaixaRow[];
 }
 
 export interface ResultadoPremiacao {
@@ -146,6 +170,8 @@ export interface ResultadoPremiacao {
   valorALTAS: number;
   bonusAparelhosRS: number;
   bonusAltasPF: number;
+  /** Bônus de BL (perfil Renovação Fixa) — 0 para os demais perfis/regras. */
+  bonusBL: number;
   /** true se o bônus PF está liberado */
   altasPFLiberado: boolean;
 
@@ -222,6 +248,7 @@ export function calcularPremiacao(input: PontosAgregados, tables: FaixaTables): 
     valorALTAS: input.faltouInjustificada ? 0 : valorALTASFinal,
     bonusAparelhosRS: input.faltouInjustificada ? 0 : bonusAparelhosRS,
     bonusAltasPF: input.faltouInjustificada ? 0 : bonusAltasPF,
+    bonusBL: 0,
     altasPFLiberado,
 
     premiacaoFinal,
@@ -294,7 +321,80 @@ export function calcularPremiacaoAntiga(input: PontosAgregados, tables: FaixaTab
     valorALTAS: input.faltouInjustificada ? 0 : valorALTASFinal,
     bonusAparelhosRS: input.faltouInjustificada ? 0 : bonusAparelhosRS,
     bonusAltasPF: input.faltouInjustificada ? 0 : bonusAltasPF,
+    bonusBL: 0,
     altasPFLiberado,
+
+    premiacaoFinal,
+    faltouInjustificada: input.faltouInjustificada,
+  };
+}
+
+/**
+ * Perfil RENOVAÇÃO FIXA — planilha "Premiação OTE Flex", aba
+ * NOVO_OTE_Renov-OUT26. Diferente do Consultivo:
+ *  - Uma única régua (8 faixas), alimentada por um pool ÚNICO de pontos:
+ *    RENOV. MV (UP/PD/DW, escolhido pelo colaborador em cada venda) +
+ *    RENOV. FB (UP/PD) + ALTAS (quando houver, mesmos pontos de hoje).
+ *  - Bônus de Aparelhos: mesma régua de R$10 mil a R$50 mil do Consultivo,
+ *    mas o avanço de 1 faixa acontece já em R$20.000,00 (não R$50.000,00).
+ *  - Bônus de BL: degraus por QUANTIDADE de Internet Fixa ativada no mês
+ *    (não é percentual sobre R$) — ver bonusBLDegrau().
+ *  - Sem ALTAS PF, sem trava binária BL+Aparelhos à parte — só a régua
+ *    principal zera se não alcançar a Faixa_1.
+ *  - Carência: SEMPRE pelo mês real de ativação, nunca "empurra" para o mês
+ *    de registro (ver aggregate.ts — perfil sempre semCarencia=true).
+ *  - Assiduidade: falta injustificada zera toda a premiação, igual aos
+ *    demais perfis.
+ */
+export function calcularPremiacaoRenovFixa(input: PontosAgregados, tables: FaixaTables): ResultadoPremiacao {
+  const { faixasRenovFixa, blBonusRenovFixa, aparelhoBonus } = tables;
+
+  // Pool único de pontos: RENOV. MV + RENOV. FB + ALTAS.
+  const ptsPool = input.ptsMV + input.ptsFB + input.ptsAltas;
+  const f = faixaAlcancada(faixasRenovFixa, ptsPool);
+
+  // isZero calculado ANTES do avanço de Aparelhos — igual à regra antiga do
+  // Consultivo: quem não alcançou nem a Faixa_1 não é "destravado" pelo
+  // avanço de Aparelhos sozinho.
+  const isZero = f.faixa === 0;
+  const advance = input.valorAparelhos >= APARELHO_ADVANCE_THRESHOLD_RENOV_FIXA;
+  const faixaFinal = advance ? Math.min(MAX_FAIXA_RENOV_FIXA, f.faixa + 1) : f.faixa;
+
+  const valorFinal = isZero ? 0 : valorSemTeto(faixasRenovFixa, faixaFinal, ptsPool);
+
+  const multAparelhoFinal = bonusAparelhoPercent(aparelhoBonus, input.valorAparelhos);
+  const bonusAparelhosRS = input.valorAparelhos * multAparelhoFinal;
+
+  const bonusBL = bonusBLDegrau(blBonusRenovFixa, input.blAtivadas);
+
+  let premiacaoFinal = valorFinal + bonusAparelhosRS + bonusBL;
+  if (input.faltouInjustificada) premiacaoFinal = 0;
+
+  return {
+    // ptsMV carrega o total do pool (é a única régua deste perfil);
+    // ptsFBAVA/ptsAltas ficam com os sub-totais só para detalhamento na
+    // tela — nenhum consumidor deve somá-los de novo em cima de ptsMV.
+    ptsMV: ptsPool,
+    ptsFBAVA: input.ptsFB,
+    ptsAltas: input.ptsAltas,
+    ptsAltasPF: 0,
+    valorAparelhos: input.valorAparelhos,
+    blAtivadas: input.blAtivadas,
+
+    faixaMV: faixaFinal,
+    faixaALTAS: faixaFinal,
+    faixaAltasPF: 0,
+    isZero,
+    destravou: !isZero,
+    advance,
+    legado: false,
+
+    valorMV: input.faltouInjustificada ? 0 : valorFinal,
+    valorALTAS: 0,
+    bonusAparelhosRS: input.faltouInjustificada ? 0 : bonusAparelhosRS,
+    bonusAltasPF: 0,
+    bonusBL: input.faltouInjustificada ? 0 : bonusBL,
+    altasPFLiberado: true,
 
     premiacaoFinal,
     faltouInjustificada: input.faltouInjustificada,

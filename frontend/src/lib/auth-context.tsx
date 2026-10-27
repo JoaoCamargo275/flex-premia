@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, getToken, setToken } from "./api";
-import type { Role } from "./types";
+import type { Role, Perfil } from "./types";
 
 export interface AuthUser {
   id: string;
   name: string;
   email: string;
   role: Role;
+  /** Só preenchido para role=COLABORADOR. */
+  perfil: Perfil | null;
   teamId: string | null;
   mustChangePassword: boolean;
 }

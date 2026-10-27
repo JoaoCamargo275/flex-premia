@@ -2,6 +2,7 @@ import { prisma } from "./prisma";
 import {
   calcularPremiacao,
   calcularPremiacaoAntiga,
+  calcularPremiacaoRenovFixa,
   FaixaTables,
   PontosAgregados,
   ResultadoPremiacao,
@@ -21,16 +22,19 @@ export function usaRegraNova(period: PeriodFilter): boolean {
 }
 
 export async function getFaixaTables(): Promise<FaixaTables> {
-  const [mv, fbava, altas, altasPF, aparelhoFaixas, aparelhoBonus, mvAntiga, altasAntiga] = await Promise.all([
-    prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV" }, orderBy: { faixa: "asc" } }),
-    prisma.faixaTable.findMany({ where: { indicator: "RENOV_FBAVA" }, orderBy: { faixa: "asc" } }),
-    prisma.faixaTable.findMany({ where: { indicator: "ALTAS" }, orderBy: { faixa: "asc" } }),
-    prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PF" }, orderBy: { faixa: "asc" } }),
-    prisma.aparelhoFaixa.findMany({ orderBy: { faixa: "asc" } }),
-    prisma.aparelhoBonus.findMany({ orderBy: { faixa: "asc" } }),
-    prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
-    prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
-  ]);
+  const [mv, fbava, altas, altasPF, aparelhoFaixas, aparelhoBonus, mvAntiga, altasAntiga, renovFixa, blBonusRenovFixa] =
+    await Promise.all([
+      prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV" }, orderBy: { faixa: "asc" } }),
+      prisma.faixaTable.findMany({ where: { indicator: "RENOV_FBAVA" }, orderBy: { faixa: "asc" } }),
+      prisma.faixaTable.findMany({ where: { indicator: "ALTAS" }, orderBy: { faixa: "asc" } }),
+      prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PF" }, orderBy: { faixa: "asc" } }),
+      prisma.aparelhoFaixa.findMany({ orderBy: { faixa: "asc" } }),
+      prisma.aparelhoBonus.findMany({ orderBy: { faixa: "asc" } }),
+      prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
+      prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
+      prisma.faixaTable.findMany({ where: { indicator: "RENOV_FIXA" }, orderBy: { faixa: "asc" } }),
+      prisma.faixaTable.findMany({ where: { indicator: "BL_BONUS_RENOV_FIXA" }, orderBy: { faixa: "asc" } }),
+    ]);
   return {
     faixasMV: mv,
     faixasFbava: fbava,
@@ -40,6 +44,8 @@ export async function getFaixaTables(): Promise<FaixaTables> {
     aparelhoBonus,
     faixasMVAntiga: mvAntiga,
     faixasAltasAntiga: altasAntiga,
+    faixasRenovFixa: renovFixa,
+    blBonusRenovFixa,
   };
 }
 
@@ -142,7 +148,10 @@ export function ehSemCarencia(indicator: string, categoryId: string | null | und
 async function sumPontosPorIndicador(
   colaboradorId: string,
   period: PeriodFilter,
-  regraNova: boolean
+  regraNova: boolean,
+  // Perfil Renovação Fixa: SEMPRE pelo mês real de ativação, nunca
+  // "empurra" pro mês de registro — ver calcularPremiacaoRenovFixa.
+  forcarSemCarencia: boolean = false
 ): Promise<{ lancado: PontosAcc; ativado: PontosAcc }> {
   const range = rangeDoPeriodo(period);
 
@@ -168,8 +177,9 @@ async function sumPontosPorIndicador(
   for (const it of items) {
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
     // A exceção de "sem carência" (Aparelhos/Internet Fixa contam pelo mês
-    // real de ativação) só vale na regra nova (a partir de OUT/2026).
-    const semCarencia = regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
+    // real de ativação) só vale na regra nova (a partir de OUT/2026) — exceto
+    // para o perfil Renovação Fixa, que não tem carência em NENHUM indicador.
+    const semCarencia = forcarSemCarencia || (regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId));
     const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (contaLancado) somarNoAcc(lancado, it.indicator, it.pointsTotal, it.valorReais);
@@ -228,12 +238,11 @@ export interface PainelColaborador {
   configurado: boolean;
 }
 
-// Perfis cujo cálculo de premiação já está implementado (CONSULTIVO, via
-// calcularPremiacao/calcularPremiacaoAntiga). Qualquer colaborador com um
-// perfil fora desta lista (ex.: RENOVACAO_FIXA, até a régua/meta dele ser
-// definida) recebe um painel zerado com configurado=false, em vez de rodar
-// o cálculo do Consultivo nele por engano.
-const PERFIS_COM_CALCULO = new Set(["CONSULTIVO"]);
+// Perfis cujo cálculo de premiação já está implementado. Qualquer
+// colaborador com um perfil fora desta lista (ex.: um perfil futuro ainda
+// sem régua definida) recebe um painel zerado com configurado=false, em vez
+// de rodar o cálculo errado nele por engano.
+const PERFIS_COM_CALCULO = new Set(["CONSULTIVO", "RENOVACAO_FIXA"]);
 
 function resultadoNaoConfigurado(legado: boolean): ResultadoPremiacao {
   return {
@@ -254,6 +263,7 @@ function resultadoNaoConfigurado(legado: boolean): ResultadoPremiacao {
     valorALTAS: 0,
     bonusAparelhosRS: 0,
     bonusAltasPF: 0,
+    bonusBL: 0,
     altasPFLiberado: false,
     premiacaoFinal: 0,
     faltouInjustificada: false,
@@ -310,6 +320,8 @@ export async function getProdutosPorFrente(
 ): Promise<ProdutosPorFrente> {
   const range = rangeDoPeriodo(period);
   const regraNova = usaRegraNova(period);
+  const colaborador = await prisma.user.findUnique({ where: { id: colaboradorId }, select: { perfil: true } });
+  const ehRenovFixa = colaborador?.perfil === "RENOVACAO_FIXA";
 
   // Mesma regra do painel: "lançado" pela data da venda, "ativado" pela
   // data considerada de ativação (ver dataConsideradaAtivacao) — um item pode entrar
@@ -344,7 +356,7 @@ export async function getProdutosPorFrente(
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const semCarencia = regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId);
+    const semCarencia = ehRenovFixa || (regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId));
     const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (!contaLancado && !contaAtivado) continue;
@@ -396,9 +408,13 @@ export async function getPainelColaborador(
     return { lancado: vazio, ativado: vazio, perfil, configurado: false };
   }
 
+  // Perfil Renovação Fixa não segue o cutover OUT/2026 (perfil novo, sem
+  // "regra antiga") e nunca tem carência, em nenhum indicador.
+  const ehRenovFixa = perfil === "RENOVACAO_FIXA";
+
   const tables = await getFaixaTables();
   const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou, blAtivadas] = await Promise.all([
-    sumPontosPorIndicador(colaboradorId, period, regraNova),
+    sumPontosPorIndicador(colaboradorId, period, regraNova, ehRenovFixa),
     getFaltouInjustificada(colaboradorId, period),
     contarBLsAtivadas(colaboradorId, period),
   ]);
@@ -410,7 +426,7 @@ export async function getPainelColaborador(
   const lancadoInput: PontosAgregados = { ...lancadoAgg, blAtivadas, faltouInjustificada: false };
   const ativadoInput: PontosAgregados = { ...ativadoAgg, blAtivadas, faltouInjustificada: faltou };
 
-  const calc = regraNova ? calcularPremiacao : calcularPremiacaoAntiga;
+  const calc = ehRenovFixa ? calcularPremiacaoRenovFixa : regraNova ? calcularPremiacao : calcularPremiacaoAntiga;
   return {
     lancado: calc(lancadoInput, tables),
     ativado: calc(ativadoInput, tables),

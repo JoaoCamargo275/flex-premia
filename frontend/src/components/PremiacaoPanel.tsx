@@ -438,15 +438,24 @@ function AparelhoBonusTable({
   valorAtual,
   bonusValorAtual,
   legado,
+  advanceThreshold = 50000,
+  advanceMessage,
+  footerNote,
 }: {
   bonusRows: AparelhoBonusRow[];
   valorAtual: number;
   bonusValorAtual: number;
   legado?: boolean;
+  /** Valor em R$ de Aparelhos pra avançar 1 faixa — varia por perfil (Consultivo: R$50 mil; Renovação Fixa: R$20 mil). */
+  advanceThreshold?: number;
+  /** Texto customizado pro aviso de avanço (perfis fora do Consultivo têm mecânica diferente). */
+  advanceMessage?: string;
+  /** Substitui o texto padrão sobre a trava de elegibilidade — alguns perfis não têm essa trava binária. */
+  footerNote?: string;
 }) {
   const rows = bonusRows.filter((r) => r.faixa !== 0);
   const atual = bonusAparelhoAtual(bonusRows, valorAtual);
-  const advance = valorAtual >= 50000;
+  const advance = valorAtual >= advanceThreshold;
   return (
     <div className="card p-4" style={{ borderTop: `3px solid ${COLORS.aparelhos}` }}>
       <h4 className="text-sm font-bold mb-3">Aparelhos — bônus em R$ (R$ 10 mil a R$ 50 mil)</h4>
@@ -496,14 +505,15 @@ function AparelhoBonusTable({
         }
       >
         {advance
-          ? legado
-            ? "🎉 Atingiu R$ 50.000,00 em aparelhos — a faixa final (determinante) avança 1 faixa!"
-            : "🎉 Atingiu R$ 50.000,00 em aparelhos — a frente (RENOV. MV ou ALTAS) que estiver na faixa mais baixa avança 1 faixa!"
-          : `Ainda não atingiu R$ 50.000,00 em aparelhos — não há avanço extra de faixa (faltam ${fmtBRL(Math.max(0, 50000 - valorAtual))})`}
+          ? advanceMessage ??
+            (legado
+              ? `🎉 Atingiu ${fmtBRL(advanceThreshold)} em aparelhos — a faixa final (determinante) avança 1 faixa!`
+              : `🎉 Atingiu ${fmtBRL(advanceThreshold)} em aparelhos — a frente (RENOV. MV ou ALTAS) que estiver na faixa mais baixa avança 1 faixa!`)
+          : `Ainda não atingiu ${fmtBRL(advanceThreshold)} em aparelhos — não há avanço extra de faixa (faltam ${fmtBRL(Math.max(0, advanceThreshold - valorAtual))})`}
       </div>
       <p className="text-xs text-ink-dim mt-2">
-        Esse bônus soma à parte, na mesma mecânica do avanço de faixa acima — mas só é pago se as travas de elegibilidade
-        (6 BL + R$ 6.000,00 em Aparelhos no mês) estiverem batidas.
+        {footerNote ??
+          "Esse bônus soma à parte, na mesma mecânica do avanço de faixa acima — mas só é pago se as travas de elegibilidade (6 BL + R$ 6.000,00 em Aparelhos no mês) estiverem batidas."}
       </p>
     </div>
   );
@@ -562,8 +572,155 @@ function FrenteBreakdown({ resultado }: { resultado: ResultadoPremiacao }) {
   );
 }
 
+/** Degraus do bônus de BL (perfil Renovação Fixa) — reaproveita FaixaRow: pts = qtd mínima de BL, valor = R$ do degrau. */
+function BLBonusTable({ rows, qtdAtual, bonusAtual }: { rows: FaixaRow[]; qtdAtual: number; bonusAtual: number }) {
+  const degraus = rows.filter((r) => r.faixa !== 0);
+  return (
+    <div className="card p-4" style={{ borderTop: `3px solid ${COLORS.altas_pf}` }}>
+      <h4 className="text-sm font-bold mb-3">Bônus de BL (Internet Fixa)</h4>
+      <div className="rounded-lg px-3 py-2 mb-3" style={{ background: "rgba(245,158,11,.1)", border: "1px solid rgba(245,158,11,.35)" }}>
+        <div className="text-[.65rem] uppercase tracking-wide text-ink-dim">Bônus em R$</div>
+        <div className="text-base font-extrabold" style={{ color: COLORS.altas_pf }}>{fmtBRL(bonusAtual)}</div>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs min-w-[260px]">
+          <thead>
+            <tr className="text-left text-ink-dim uppercase">
+              <th className="py-1 pr-2">Qtd. de BL</th>
+              <th className="py-1 pr-2">Bônus (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {degraus.map((r) => {
+              const hit = qtdAtual >= r.pts;
+              return (
+                <tr
+                  key={r.faixa}
+                  className="border-t border-white/5"
+                  style={hit ? { color: COLORS.altas_pf, fontWeight: 700 } : { color: "var(--ink-dim)" }}
+                >
+                  <td className="py-1.5 pr-2">{fmtNum(r.pts)}+</td>
+                  <td className="py-1.5 pr-2">{fmtBRL(r.valor)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-ink-dim mt-2">Bônus fixo por degrau de quantidade de BL ativada no mês — não é percentual.</p>
+    </div>
+  );
+}
+
+/**
+ * Painel do perfil RENOVAÇÃO FIXA — régua própria (pool único de pontos:
+ * RENOV. MV + RENOV. FB + ALTAS), bônus de Aparelhos (avanço em R$20 mil) e
+ * bônus de BL por degrau de quantidade. Não reaproveita FrenteBarRace/
+ * MiniFaixaTable/ElegibilidadeCard do Consultivo — a mecânica é diferente o
+ * bastante pra justificar um componente próprio (ver calculo-premiacao.ts).
+ */
+function PainelRenovFixa({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
+  const { lancado, ativado } = painel;
+  const faixaMaxima = faixas.faixasRenovFixa[faixas.faixasRenovFixa.length - 1]?.faixa ?? 0;
+  const semTeto = ativado.faixaMV === faixaMaxima && alemDoTeto(faixas.faixasRenovFixa, ativado.ptsMV);
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="card p-5">
+          <div className="text-xs uppercase tracking-wide text-ink-dim mb-1">Pontos lançados (pool único)</div>
+          <div className="text-4xl font-extrabold">{fmtNum(lancado.ptsMV)} <span className="text-lg font-bold text-ink-dim">pts</span></div>
+          <div className="text-xs text-ink-dim mt-2">Premiação lançada estimada: {fmtBRL(lancado.premiacaoFinal)}</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[.7rem] text-ink-dim mt-3">
+            <span><b className="text-ink">{fmtNum(lancado.ptsFBAVA)}</b> de RENOV. FB</span>
+            <span>·</span>
+            <span><b className="text-ink">{fmtNum(lancado.ptsAltas)}</b> de ALTAS</span>
+            <span>·</span>
+            <span><b className="text-ink">{fmtBRL(lancado.valorAparelhos)}</b> Aparelhos vendidos</span>
+            <span>·</span>
+            <span><b className="text-ink">{fmtNum(lancado.blAtivadas)}</b> BL ativadas</span>
+          </div>
+        </div>
+        <div className="card p-5" style={{ border: "1px solid rgba(34,197,94,.4)" }}>
+          <div className="text-xs uppercase tracking-wide text-ink-dim mb-1">Pontos ativados (conta oficialmente)</div>
+          <div className="text-4xl font-extrabold text-good">{fmtNum(ativado.ptsMV)} <span className="text-lg font-bold text-ink-dim">pts</span></div>
+          <div className="text-xs text-ink-dim mt-2">Premiação ativada estimada: {fmtBRL(ativado.premiacaoFinal)}</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[.7rem] text-ink-dim mt-3">
+            <span><b className="text-ink">{fmtNum(ativado.ptsFBAVA)}</b> de RENOV. FB</span>
+            <span>·</span>
+            <span><b className="text-ink">{fmtNum(ativado.ptsAltas)}</b> de ALTAS</span>
+            <span>·</span>
+            <span><b className="text-ink">{fmtBRL(ativado.valorAparelhos)}</b> Aparelhos vendidos</span>
+            <span>·</span>
+            <span><b className="text-ink">{fmtNum(ativado.blAtivadas)}</b> BL ativadas</span>
+          </div>
+        </div>
+      </div>
+
+      {ativado.faltouInjustificada && (
+        <div className="card p-4 border border-accent-3 text-accent-3 text-sm font-semibold">
+          🚫 Falta injustificada registrada no período — a premiação ativada foi zerada (regra de assiduidade).
+        </div>
+      )}
+      {!ativado.faltouInjustificada && ativado.isZero && (
+        <div className="card p-4 border border-accent-3 text-accent-3 text-sm font-semibold">
+          ⚠️ Ainda não alcançou a Faixa 1 no período — a premiação ativada está zerada.
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Stat label="Faixa" value={`Faixa ${ativado.faixaMV}`} sub={`${fmtNum(ativado.ptsMV)} pts · ${fmtBRL(ativado.valorMV)}`} />
+        <Stat label="Bônus Aparelhos" value={fmtBRL(ativado.bonusAparelhosRS)} sub={fmtBRL(ativado.valorAparelhos) + " vendidos"} />
+        <Stat label="Bônus de BL" value={fmtBRL(ativado.bonusBL)} sub={`${fmtNum(ativado.blAtivadas)} BL ativadas`} />
+        <Stat label="Premiação total" value={fmtBRL(ativado.premiacaoFinal)} />
+      </div>
+
+      <p className="text-xs text-ink-dim">
+        RENOV. MV + RENOV. FB + ALTAS somam um pool único de pontos, pago por uma régua só (sem a regra de "menor faixa
+        entre as frentes" do Consultivo). RENOV. FB tem bônus de BL à parte. Carência: toda venda conta pelo mês real de
+        ativação (sem o adiantamento de 2 meses do Consultivo).
+      </p>
+
+      <div>
+        <h3 className="text-sm font-bold text-ink-dim uppercase tracking-wide mb-3">
+          Quanto falta para a próxima faixa — sua posição atual está destacada
+        </h3>
+        <div className="grid md:grid-cols-2 gap-4">
+          <MiniFaixaTable
+            title="RENOV. MV + RENOV. FB + ALTAS (pool único)"
+            rows={faixas.faixasRenovFixa}
+            faixaAtual={ativado.faixaMV}
+            ptsAtual={ativado.ptsMV}
+            color={COLORS.mv}
+          />
+          <BLBonusTable rows={faixas.blBonusRenovFixa} qtdAtual={ativado.blAtivadas} bonusAtual={ativado.bonusBL} />
+          <div className="md:col-span-2">
+            <AparelhoBonusTable
+              bonusRows={faixas.aparelhoBonus}
+              valorAtual={ativado.valorAparelhos}
+              bonusValorAtual={ativado.bonusAparelhosRS}
+              advanceThreshold={20000}
+              advanceMessage="🎉 Atingiu R$ 20.000,00 em aparelhos — a faixa avança 1!"
+              footerNote="Esse bônus soma à parte, na mesma mecânica do avanço de faixa acima."
+            />
+          </div>
+        </div>
+        {semTeto && (
+          <div
+            className="text-xs font-bold mt-3 rounded-lg px-3 py-2"
+            style={{ background: "linear-gradient(135deg, #ec1a72, #8b3dff)", color: "#fff" }}
+          >
+            🚀 Sem teto: você já passou da Faixa {faixaMaxima} — a premiação continua subindo proporcionalmente aos pontos.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
   if (!painel.configurado) return <PerfilNaoConfigurado perfil={painel.perfil} />;
+  if (painel.perfil === "RENOVACAO_FIXA") return <PainelRenovFixa painel={painel} faixas={faixas} />;
   const legado = painel.ativado.legado;
   // ptsMV já vem do backend com FB/AVA somado (regra nova) — não soma ptsFBAVA de novo aqui.
   // Na regra antiga (legado), ptsMV já vem SEM FB/AVA (que tem bônus à parte), então o total

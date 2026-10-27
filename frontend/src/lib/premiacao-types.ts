@@ -24,6 +24,8 @@ export interface ResultadoPremiacao {
   valorALTAS: number;
   bonusAparelhosRS: number;
   bonusAltasPF: number;
+  /** Bônus de BL (perfil Renovação Fixa) — 0 para os demais perfis/regras. */
+  bonusBL: number;
   altasPFLiberado: boolean;
 
   premiacaoFinal: number;
@@ -69,6 +71,9 @@ export interface FaixaTables {
   aparelhoBonus: AparelhoBonusRow[];
   faixasMVAntiga: FaixaRow[];
   faixasAltasAntiga: FaixaRow[];
+  /** Perfil Renovação Fixa — régua única e degraus de bônus de BL. */
+  faixasRenovFixa: FaixaRow[];
+  blBonusRenovFixa: FaixaRow[];
 }
 
 export interface FrenteBreakdown {

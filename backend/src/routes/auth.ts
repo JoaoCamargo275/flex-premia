@@ -45,6 +45,7 @@ authRouter.post("/login", async (req, res) => {
       name: user.name,
       email: user.email,
       role: user.role,
+      perfil: user.role === "COLABORADOR" ? user.perfil : null,
       teamId: user.teamId,
       mustChangePassword: user.mustChangePassword,
     },
