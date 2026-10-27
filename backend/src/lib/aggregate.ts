@@ -304,6 +304,7 @@ function resultadoNaoConfigurado(legado: boolean): ResultadoPremiacao {
     valorALTAS: 0,
     bonusAparelhosRS: 0,
     bonusAltasPF: 0,
+    bonusFBAVA: 0,
     bonusBL: 0,
     altasPFLiberado: false,
     premiacaoFinal: 0,

@@ -37,6 +37,19 @@ const HEADER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: 
 const MOEDA_FMT = '"R$" #,##0.00';
 const DATA_FMT = "dd/mm/yyyy";
 
+// Pontos/valor da coluna "RENOV. MV + FB/AVA" do fechamento. Na regra NOVA,
+// ptsMV/valorMV já vêm com FB/AVA somado — nada a fazer. Na regra ANTIGA
+// (legado, até SET/2026), FB/AVA tem régua e bônus próprios à parte (ver
+// calcularPremiacaoAntiga em calculo-premiacao.ts), então é preciso somar
+// ptsFBAVA/bonusFBAVA aqui — sem isso a coluna "some" com a pontuação/bônus
+// de RENOV. FB nesses meses, mesmo premiacaoFinal já incluindo o valor.
+function mvFbavaPts(r: ResultadoPremiacao): number {
+  return r.legado ? r.ptsMV + r.ptsFBAVA : r.ptsMV;
+}
+function mvFbavaValor(r: ResultadoPremiacao): number {
+  return r.valorMV + r.bonusFBAVA;
+}
+
 function frenteDoIndicador(indicator: string): FrenteKey | null {
   switch (indicator) {
     case "RENOV_MV":
@@ -248,11 +261,11 @@ function addResumoColaboradoresSheet(
   for (const c of colaboradores) {
     const row = sheet.addRow([
       c.nome,
-      c.ativado.ptsMV,
+      mvFbavaPts(c.ativado),
       c.ativado.ptsAltas,
       c.ativado.ptsAltasPF,
       c.ativado.valorAparelhos,
-      c.ativado.valorMV,
+      mvFbavaValor(c.ativado),
       c.ativado.valorALTAS,
       c.ativado.bonusAltasPF,
       c.ativado.bonusAparelhosRS,
@@ -266,11 +279,11 @@ function addResumoColaboradoresSheet(
 
   const totalRow = sheet.addRow([
     "TOTAL DA EQUIPE",
-    sum(colaboradores.map((c) => c.ativado.ptsMV)),
+    sum(colaboradores.map((c) => mvFbavaPts(c.ativado))),
     sum(colaboradores.map((c) => c.ativado.ptsAltas)),
     sum(colaboradores.map((c) => c.ativado.ptsAltasPF)),
     sum(colaboradores.map((c) => c.ativado.valorAparelhos)),
-    sum(colaboradores.map((c) => c.ativado.valorMV)),
+    sum(colaboradores.map((c) => mvFbavaValor(c.ativado))),
     sum(colaboradores.map((c) => c.ativado.valorALTAS)),
     sum(colaboradores.map((c) => c.ativado.bonusAltasPF)),
     sum(colaboradores.map((c) => c.ativado.bonusAparelhosRS)),
@@ -296,8 +309,19 @@ function addColaboradorSheet(
   sheet.addRow([]);
 
   headerRow(sheet, ["Frente", "Pontos/Valor ativado", "Premiação (R$)"]);
-  const rowMV = sheet.addRow([FRENTE_LABELS.mv, c.ativado.ptsMV, c.ativado.valorMV]);
+  const rowMV = sheet.addRow([
+    c.ativado.legado ? FRENTE_LABELS.mv : `${FRENTE_LABELS.mv} + FB/AVA`,
+    c.ativado.ptsMV,
+    c.ativado.valorMV,
+  ]);
   rowMV.getCell(3).numFmt = MOEDA_FMT;
+  // Na regra ANTIGA (legado), RENOV. FB/AVA tem régua e bônus próprios, à
+  // parte de RENOV. MV — sem essa linha, o bônus (que já está somado no
+  // TOTAL PREMIAÇÃO lá embaixo) fica invisível nesta tabela.
+  if (c.ativado.legado) {
+    const rowFbava = sheet.addRow([FRENTE_LABELS.fbava, c.ativado.ptsFBAVA, c.ativado.bonusFBAVA]);
+    rowFbava.getCell(3).numFmt = MOEDA_FMT;
+  }
   const rowAltas = sheet.addRow([FRENTE_LABELS.altas, c.ativado.ptsAltas, c.ativado.valorALTAS]);
   rowAltas.getCell(3).numFmt = MOEDA_FMT;
   const rowAltasPF = sheet.addRow([FRENTE_LABELS.altas_pf, c.ativado.ptsAltasPF, c.ativado.bonusAltasPF]);
@@ -430,11 +454,11 @@ function addResumoEquipesSheet(
     const row = sheet.addRow([
       eq.nomeEquipe,
       eq.supervisorNome,
-      sum(eq.colaboradores.map((c) => c.ativado.ptsMV)),
+      sum(eq.colaboradores.map((c) => mvFbavaPts(c.ativado))),
       sum(eq.colaboradores.map((c) => c.ativado.ptsAltas)),
       sum(eq.colaboradores.map((c) => c.ativado.ptsAltasPF)),
       sum(eq.colaboradores.map((c) => c.ativado.valorAparelhos)),
-      sum(eq.colaboradores.map((c) => c.ativado.valorMV)),
+      sum(eq.colaboradores.map((c) => mvFbavaValor(c.ativado))),
       sum(eq.colaboradores.map((c) => c.ativado.valorALTAS)),
       sum(eq.colaboradores.map((c) => c.ativado.bonusAltasPF)),
       sum(eq.colaboradores.map((c) => c.ativado.bonusAparelhosRS)),
@@ -448,11 +472,11 @@ function addResumoEquipesSheet(
   const totalRow = sheet.addRow([
     "TOTAL GERAL",
     "",
-    sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.ptsMV))),
+    sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => mvFbavaPts(c.ativado)))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.ptsAltas))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.ptsAltasPF))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.valorAparelhos))),
-    sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.valorMV))),
+    sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => mvFbavaValor(c.ativado)))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.valorALTAS))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.bonusAltasPF))),
     sum(equipes.flatMap((eq) => eq.colaboradores.map((c) => c.ativado.bonusAparelhosRS))),
@@ -497,11 +521,11 @@ function addEquipeSheet(
   for (const c of colaboradores) {
     const row = sheet.addRow([
       c.nome,
-      c.ativado.ptsMV,
+      mvFbavaPts(c.ativado),
       c.ativado.ptsAltas,
       c.ativado.ptsAltasPF,
       c.ativado.valorAparelhos,
-      c.ativado.valorMV,
+      mvFbavaValor(c.ativado),
       c.ativado.valorALTAS,
       c.ativado.bonusAltasPF,
       c.ativado.bonusAparelhosRS,
@@ -519,11 +543,11 @@ function addEquipeSheet(
 
   const totalRow = sheet.addRow([
     "TOTAL DA EQUIPE",
-    sum(colaboradores.map((c) => c.ativado.ptsMV)),
+    sum(colaboradores.map((c) => mvFbavaPts(c.ativado))),
     sum(colaboradores.map((c) => c.ativado.ptsAltas)),
     sum(colaboradores.map((c) => c.ativado.ptsAltasPF)),
     sum(colaboradores.map((c) => c.ativado.valorAparelhos)),
-    sum(colaboradores.map((c) => c.ativado.valorMV)),
+    sum(colaboradores.map((c) => mvFbavaValor(c.ativado))),
     sum(colaboradores.map((c) => c.ativado.valorALTAS)),
     sum(colaboradores.map((c) => c.ativado.bonusAltasPF)),
     sum(colaboradores.map((c) => c.ativado.bonusAparelhosRS)),

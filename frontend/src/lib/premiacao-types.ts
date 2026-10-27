@@ -24,6 +24,8 @@ export interface ResultadoPremiacao {
   valorALTAS: number;
   bonusAparelhosRS: number;
   bonusAltasPF: number;
+  /** Bônus de RENOV. FB/AVA — só existe na regra ANTIGA (até SET/2026, `legado=true`); 0 na regra nova. */
+  bonusFBAVA: number;
   /** Bônus de BL (perfil Renovação Fixa) — 0 para os demais perfis/regras. */
   bonusBL: number;
   altasPFLiberado: boolean;

@@ -520,13 +520,29 @@ function AparelhoBonusTable({
 }
 
 function ResultadoGrid({ resultado }: { resultado: ResultadoPremiacao }) {
+  // Na regra ANTIGA (legado), RENOV. FB/AVA tem régua e bônus próprios, à
+  // parte de RENOV. MV — ptsMV/valorMV NÃO incluem FB/AVA nesse caso (ver
+  // calcularPremiacaoAntiga). Por isso aqui é preciso um card dedicado pro
+  // bônus de FB/AVA só em legado; na regra nova FB/AVA já vem somado dentro
+  // de ptsMV/valorMV, então o card de cima já conta a história inteira.
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <Stat
-        label="RENOV. MV + FB/AVA"
+        label={resultado.legado ? "RENOV. MV" : "RENOV. MV + FB/AVA"}
         value={`Faixa ${resultado.faixaMV}`}
-        sub={`${fmtNum(resultado.ptsMV)} pts (${fmtNum(resultado.ptsFBAVA)} de FB/AVA) · ${fmtBRL(resultado.valorMV)}`}
+        sub={
+          resultado.legado
+            ? `${fmtNum(resultado.ptsMV)} pts · ${fmtBRL(resultado.valorMV)}`
+            : `${fmtNum(resultado.ptsMV)} pts (${fmtNum(resultado.ptsFBAVA)} de FB/AVA) · ${fmtBRL(resultado.valorMV)}`
+        }
       />
+      {resultado.legado && (
+        <Stat
+          label="Bônus RENOV. FB/AVA"
+          value={fmtBRL(resultado.bonusFBAVA)}
+          sub={`${fmtNum(resultado.ptsFBAVA)} pts`}
+        />
+      )}
       <Stat
         label="ALTAS"
         value={`Faixa ${resultado.faixaALTAS}`}
@@ -557,10 +573,23 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
 }
 
 function FrenteBreakdown({ resultado }: { resultado: ResultadoPremiacao }) {
+  // Na regra ANTIGA (legado), ptsMV NÃO inclui FB/AVA (que tem régua/bônus
+  // próprios à parte) — mostrar só "RENOV. MV + FB/AVA" com o valor de
+  // ptsMV faria parecer que a pontuação de RENOV. FB sumiu. Por isso, em
+  // legado, mostra os dois separados (igual já é feito no painel da
+  // Renovação Fixa).
   return (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-[.7rem] text-ink-dim mt-3">
-      <span><b className="text-ink">{fmtNum(resultado.ptsMV)}</b> RENOV. MV + FB/AVA</span>
+      <span><b className="text-ink">{fmtNum(resultado.ptsMV)}</b> {resultado.legado ? "RENOV. MV" : "RENOV. MV + FB/AVA"}</span>
       <span>·</span>
+      {resultado.legado && (
+        <>
+          <span>
+            <b className="text-ink">{fmtNum(resultado.ptsFBAVA)}</b> RENOV. FB/AVA ({fmtBRL(resultado.bonusFBAVA)})
+          </span>
+          <span>·</span>
+        </>
+      )}
       <span><b className="text-ink">{fmtNum(resultado.ptsAltas)}</b> ALTAS</span>
       <span>·</span>
       <span><b className="text-ink">{fmtNum(resultado.ptsAltasPF)}</b> ALTAS PF</span>

@@ -179,6 +179,14 @@ export interface ResultadoPremiacao {
   valorALTAS: number;
   bonusAparelhosRS: number;
   bonusAltasPF: number;
+  /**
+   * Bônus de RENOV. FB/AVA — só existe na regra ANTIGA (até SET/2026), onde
+   * FB/AVA tem régua e bônus próprios, à parte de RENOV. MV (ver
+   * calcularPremiacaoAntiga). Na regra nova FB/AVA já vem somado dentro de
+   * ptsMV/valorMV, então aqui fica sempre 0. Nos dois casos já está somado
+   * dentro de premiacaoFinal — este campo é só para exibição detalhada.
+   */
+  bonusFBAVA: number;
   /** Bônus de BL (perfil Renovação Fixa) — 0 para os demais perfis/regras. */
   bonusBL: number;
   /** true se o bônus PF está liberado */
@@ -257,6 +265,7 @@ export function calcularPremiacao(input: PontosAgregados, tables: FaixaTables): 
     valorALTAS: input.faltouInjustificada ? 0 : valorALTASFinal,
     bonusAparelhosRS: input.faltouInjustificada ? 0 : bonusAparelhosRS,
     bonusAltasPF: input.faltouInjustificada ? 0 : bonusAltasPF,
+    bonusFBAVA: 0,
     bonusBL: 0,
     altasPFLiberado,
 
@@ -330,6 +339,7 @@ export function calcularPremiacaoAntiga(input: PontosAgregados, tables: FaixaTab
     valorALTAS: input.faltouInjustificada ? 0 : valorALTASFinal,
     bonusAparelhosRS: input.faltouInjustificada ? 0 : bonusAparelhosRS,
     bonusAltasPF: input.faltouInjustificada ? 0 : bonusAltasPF,
+    bonusFBAVA: input.faltouInjustificada ? 0 : bonusFBAVA,
     bonusBL: 0,
     altasPFLiberado,
 
@@ -409,6 +419,7 @@ export function calcularPremiacaoRenovFixa(input: PontosAgregados, tables: Faixa
     valorALTAS: 0,
     bonusAparelhosRS: input.faltouInjustificada ? 0 : bonusAparelhosRS,
     bonusAltasPF: 0,
+    bonusFBAVA: 0,
     bonusBL: input.faltouInjustificada ? 0 : bonusBL,
     altasPFLiberado: true,
 
