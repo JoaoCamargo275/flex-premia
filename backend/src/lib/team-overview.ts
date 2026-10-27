@@ -217,7 +217,13 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
   for (const userId of userIds) {
     const painel = await getPainelColaborador(userId, period);
     premiacaoEstimada += painel.ativado.premiacaoFinal;
-    pontosAtivos += painel.ativado.ptsMV + painel.ativado.ptsFBAVA + painel.ativado.ptsAltas;
+    // Perfil Renovação Fixa: ptsMV já é o pool único (MV+FB+ALTAS somados) —
+    // ptsFBAVA/ptsAltas aqui são só sub-breakdown pra exibição, não devem
+    // entrar de novo na soma (ver comentário em ResultadoPremiacao).
+    pontosAtivos +=
+      painel.perfil === "RENOVACAO_FIXA"
+        ? painel.ativado.ptsMV
+        : painel.ativado.ptsMV + painel.ativado.ptsFBAVA + painel.ativado.ptsAltas;
   }
 
   return {
@@ -390,6 +396,7 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
   const members: MemberOverview[] = [];
   for (const user of users) {
     const painel = await getPainelColaborador(user.id, period);
+    const ehRenovFixa = painel.perfil === "RENOVACAO_FIXA";
     members.push({
       id: user.id,
       name: user.name,
@@ -402,7 +409,9 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
         mv: painel.ativado.valorMV,
         fbava: 0,
         altas: painel.ativado.valorALTAS,
-        altas_pf: painel.ativado.bonusAltasPF,
+        // Perfil Renovação Fixa: não há bônus de ALTAS PF, então reaproveita
+        // esse slot pro bônus de BL (fica 0 pra quem não é desse perfil).
+        altas_pf: painel.ativado.bonusAltasPF + painel.ativado.bonusBL,
         aparelhos: painel.ativado.bonusAparelhosRS,
       },
       // Não existe mais uma faixa única compartilhada entre as frentes —
@@ -411,8 +420,12 @@ export async function getTeamOverview(userIds: string[], period: PeriodFilter = 
       faixaAtivada: Math.min(painel.ativado.faixaMV, painel.ativado.faixaALTAS),
       frentes: {
         mv: { lancado: painel.lancado.ptsMV, ativado: painel.ativado.ptsMV },
-        fbava: { lancado: painel.lancado.ptsFBAVA, ativado: painel.ativado.ptsFBAVA },
-        altas: { lancado: painel.lancado.ptsAltas, ativado: painel.ativado.ptsAltas },
+        // Perfil Renovação Fixa: ptsMV acima já é o pool único (MV+FB+ALTAS).
+        // fbava/altas ficam zerados aqui pra essa soma de equipe não contar
+        // o mesmo ponto duas vezes — a quebra por sub-indicador só aparece
+        // no painel individual do colaborador (PainelRenovFixa).
+        fbava: ehRenovFixa ? { lancado: 0, ativado: 0 } : { lancado: painel.lancado.ptsFBAVA, ativado: painel.ativado.ptsFBAVA },
+        altas: ehRenovFixa ? { lancado: 0, ativado: 0 } : { lancado: painel.lancado.ptsAltas, ativado: painel.ativado.ptsAltas },
         altas_pf: { lancado: painel.lancado.ptsAltasPF, ativado: painel.ativado.ptsAltasPF },
         aparelhos: { lancado: painel.lancado.valorAparelhos, ativado: painel.ativado.valorAparelhos },
       },
