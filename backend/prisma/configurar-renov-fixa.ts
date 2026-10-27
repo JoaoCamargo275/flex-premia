@@ -8,12 +8,12 @@
  *  - FaixaTable "BL_BONUS_RENOV_FIXA": degraus de bônus por quantidade de
  *    BL ativada no mês (reaproveita as colunas pts/valor da tabela como
  *    "qtd mínima de BL" / "R$ do degrau" — não é uma régua de pontuação).
- *  - FaixaTable "RENOV_FIXA_M1": régua de "rampagem" do 1º mês do
- *    colaborador no perfil (ver User.perfilDesde e mesRampagem() em
- *    aggregate.ts) — mesmos R$ por faixa da régua normal, pts reduzido
- *    (planilha com "Premiação Base OTE" de 100% da meta em 350 pts, em vez
- *    de 750). RENOV_FIXA_M2/M3 ainda não têm numeros (adicionar aqui
- *    quando vierem).
+ *  - FaixaTable "RENOV_FIXA_M1"/"RENOV_FIXA_M2": régua de "rampagem" do 1º e
+ *    2º mês do colaborador no perfil (ver User.perfilDesde e mesRampagem()
+ *    em aggregate.ts) — mesmos R$ por faixa da régua normal, pts reduzido
+ *    (planilha com "Premiação Base OTE" de 100% da meta em 350 pts no mês 1
+ *    e 400 pts no mês 2, em vez de 750). RENOV_FIXA_M3 ainda não tem
+ *    números (adicionar aqui quando vier).
  *
  * O bônus de Aparelhos (R$10 mil a R$50 mil) deste perfil REAPROVEITA a
  * tabela AparelhoBonus que já existe (os valores da planilha são idênticos
@@ -68,6 +68,22 @@ const FAIXAS_RENOV_FIXA_M1: FaixaRow[] = [
   { faixa: 8, pts: 700, valor: 1920, aparelhos: 0, metaPct: "200%", pctFinal: 1.6 },
 ];
 
+// Régua de rampagem, mês 2 — mesma estrutura de FAIXAS_RENOV_FIXA, mas com
+// "Premiação Base OTE" (100% da meta) em 400 pts em vez de 750: todas as
+// faixas escalam proporcionalmente, o R$ de cada faixa fica idêntico ao da
+// régua normal.
+const FAIXAS_RENOV_FIXA_M2: FaixaRow[] = [
+  { faixa: 0, pts: 0, valor: 0, aparelhos: 0, metaPct: "< 40%", pctFinal: 0 },
+  { faixa: 1, pts: 160, valor: 180, aparelhos: 0, metaPct: "40%", pctFinal: 0.15 },
+  { faixa: 2, pts: 240, valor: 360, aparelhos: 0, metaPct: "60%", pctFinal: 0.3 },
+  { faixa: 3, pts: 320, valor: 480, aparelhos: 0, metaPct: "80%", pctFinal: 0.4 },
+  { faixa: 4, pts: 400, valor: 600, aparelhos: 0, metaPct: "100%", pctFinal: 0.5 },
+  { faixa: 5, pts: 480, valor: 720, aparelhos: 0, metaPct: "120%", pctFinal: 0.6 },
+  { faixa: 6, pts: 560, valor: 840, aparelhos: 0, metaPct: "140%", pctFinal: 0.7 },
+  { faixa: 7, pts: 640, valor: 1200, aparelhos: 0, metaPct: "160%", pctFinal: 1.0 },
+  { faixa: 8, pts: 800, valor: 1920, aparelhos: 0, metaPct: "200%", pctFinal: 1.6 },
+];
+
 // Degraus do bônus de BL — colunas G (Qtd. BL) / H (Valor R$) da seção
 // "Bônus de BL" da planilha. pts aqui = quantidade mínima de BL ativada.
 const BL_BONUS_RENOV_FIXA: FaixaRow[] = [
@@ -103,10 +119,14 @@ async function main() {
   await upsertFaixaTable("RENOV_FIXA_M1", FAIXAS_RENOV_FIXA_M1);
   console.log(`  ${FAIXAS_RENOV_FIXA_M1.length} faixa(s) gravada(s).`);
 
+  console.log("Criando/atualizando RENOV_FIXA_M2 (régua de rampagem — mês 2)...");
+  await upsertFaixaTable("RENOV_FIXA_M2", FAIXAS_RENOV_FIXA_M2);
+  console.log(`  ${FAIXAS_RENOV_FIXA_M2.length} faixa(s) gravada(s).`);
+
   console.log("");
   console.log("Concluído. O bônus de Aparelhos deste perfil reaproveita a tabela AparelhoBonus já existente.");
-  console.log("RENOV_FIXA_M2/M3 (rampagem meses 2 e 3) ainda não têm números — colaboradores em rampagem além");
-  console.log("do mês 1 caem de volta na régua normal até esses números serem adicionados aqui.");
+  console.log("RENOV_FIXA_M3 (rampagem mês 3) ainda não tem números — colaboradores em rampagem no mês 3 caem");
+  console.log("de volta na régua normal até esses números serem adicionados aqui.");
   console.log("Nenhuma venda, ponto já lançado ou premiação já fechada foi alterada.");
 }
 
