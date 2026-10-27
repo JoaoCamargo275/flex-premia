@@ -1,5 +1,20 @@
 import { fmtBRL, fmtNum } from "../lib/format";
 import type { ResultadoPremiacao, PainelColaborador, FaixaTables, FaixaRow, AparelhoBonusRow, AparelhoFaixaRow } from "../lib/premiacao-types";
+import { PERFIL_LABELS, type Perfil } from "../lib/types";
+
+function PerfilNaoConfigurado({ perfil }: { perfil: string }) {
+  const label = PERFIL_LABELS[perfil as Perfil] ?? perfil;
+  return (
+    <div className="card p-6 text-center">
+      <div className="text-3xl mb-2">🛠️</div>
+      <h3 className="text-base font-bold mb-1">Perfil "{label}" ainda não configurado</h3>
+      <p className="text-sm text-ink-dim max-w-md mx-auto">
+        As réguas de faixas e metas desse perfil ainda não foram cadastradas na plataforma. Assim que forem definidas, o
+        painel de premiação passa a mostrar os números normalmente.
+      </p>
+    </div>
+  );
+}
 
 const COLORS = {
   mv: "#ec1a72",
@@ -548,6 +563,7 @@ function FrenteBreakdown({ resultado }: { resultado: ResultadoPremiacao }) {
 }
 
 export function PainelLancadoAtivado({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
+  if (!painel.configurado) return <PerfilNaoConfigurado perfil={painel.perfil} />;
   const legado = painel.ativado.legado;
   // ptsMV já vem do backend com FB/AVA somado (regra nova) — não soma ptsFBAVA de novo aqui.
   // Na regra antiga (legado), ptsMV já vem SEM FB/AVA (que tem bônus à parte), então o total

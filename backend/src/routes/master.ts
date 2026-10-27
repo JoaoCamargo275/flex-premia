@@ -9,6 +9,7 @@ import { gerarSenhaTemporaria } from "../lib/temp-password";
 import { buildFechamentoMasterXlsx, nomeArquivoSeguro } from "../lib/fechamento";
 import { signToken } from "../auth/jwt";
 import type { Role } from "../lib/types";
+import { PERFIS, type Perfil } from "../lib/types";
 
 export const masterRouter = Router();
 
@@ -90,6 +91,7 @@ masterRouter.get("/usuarios", async (_req, res) => {
       name: u.name,
       email: u.email,
       role: u.role,
+      perfil: u.role === "COLABORADOR" ? u.perfil : null,
       active: u.active,
       teamId: u.teamId,
       teamName: u.team?.name ?? null,
@@ -126,18 +128,23 @@ masterRouter.post("/usuarios/:id/resetar-senha", async (req: AuthedRequest, res)
 masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
   try {
     const master = req.user!;
-    const { name, email: rawEmail, password, role, teamId } = req.body as {
+    const { name, email: rawEmail, password, role, teamId, perfil } = req.body as {
       name: string;
       email: string;
       password: string;
       role: Role;
       teamId?: string | null;
+      perfil?: Perfil;
     };
 
     if (!password || password.length < 8) throw new Error("A senha deve ter ao menos 8 caracteres.");
     const email = rawEmail.trim().toLowerCase();
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) throw new Error("Já existe um usuário com este e-mail.");
+
+    if (role === "COLABORADOR" && perfil && !PERFIS.includes(perfil)) {
+      throw new Error("Perfil inválido.");
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
     await prisma.user.create({
@@ -146,6 +153,7 @@ masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
         email,
         passwordHash,
         role,
+        perfil: role === "COLABORADOR" ? perfil ?? "CONSULTIVO" : "CONSULTIVO",
         teamId: role === "COLABORADOR" ? teamId ?? null : null,
         createdById: master.sub,
         mustChangePassword: true,
@@ -160,13 +168,19 @@ masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
 
 masterRouter.patch("/usuarios/:id", async (req: AuthedRequest, res) => {
   try {
-    const { active, teamId } = req.body as { active?: boolean; teamId?: string | null };
-    const data: { active?: boolean; teamId?: string | null } = {};
+    const { active, teamId, perfil } = req.body as { active?: boolean; teamId?: string | null; perfil?: Perfil };
+    const data: { active?: boolean; teamId?: string | null; perfil?: Perfil } = {};
     if (typeof active === "boolean") data.active = active;
     if (teamId !== undefined) {
       const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
       if (!user || user.role !== "COLABORADOR") throw new Error("Só é possível mover colaboradores entre equipes.");
       data.teamId = teamId;
+    }
+    if (perfil !== undefined) {
+      const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+      if (!user || user.role !== "COLABORADOR") throw new Error("Só é possível trocar o perfil de colaboradores.");
+      if (!PERFIS.includes(perfil)) throw new Error("Perfil inválido.");
+      data.perfil = perfil;
     }
     await prisma.user.update({ where: { id: (req.params.id as string) }, data });
     res.json({ ok: true });

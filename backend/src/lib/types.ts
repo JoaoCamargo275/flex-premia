@@ -1,6 +1,18 @@
 export const ROLES = ["MASTER", "SUPERVISOR", "COLABORADOR"] as const;
 export type Role = (typeof ROLES)[number];
 
+// Perfil do colaborador — define qual régua/meta/cálculo de premiação se
+// aplica (ver aggregate.ts/calculo-premiacao.ts). Só importa para
+// role=COLABORADOR. Novos perfis entram só adicionando aqui; um perfil sem
+// cálculo implementado mostra "painel não configurado" em vez de rodar a
+// conta errada.
+export const PERFIS = ["CONSULTIVO", "RENOVACAO_FIXA"] as const;
+export type Perfil = (typeof PERFIS)[number];
+export const PERFIL_LABELS: Record<Perfil, string> = {
+  CONSULTIVO: "Consultivo",
+  RENOVACAO_FIXA: "Renovação Fixa",
+};
+
 // O status da venda agora é texto livre digitado pelo colaborador (não é mais
 // um enum fechado). Esta lista serve só como sugestão (datalist) no frontend.
 // O cancelamento de uma venda é controlado à parte pelo campo Sale.cancelado.

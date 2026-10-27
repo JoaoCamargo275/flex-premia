@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { api } from "../../lib/api";
+import { PERFIS, PERFIL_LABELS, type Perfil } from "../../lib/types";
 
 export interface UserRow {
   id: string;
   name: string;
   email: string;
   role: "MASTER" | "SUPERVISOR" | "COLABORADOR";
+  perfil: Perfil | null;
   active: boolean;
   teamId: string | null;
   teamName: string | null;
@@ -81,6 +83,7 @@ export function UsersTable({
             <tr className="text-left text-ink-dim text-xs uppercase">
               <th className="py-2">Nome</th>
               <th className="py-2">Papel</th>
+              <th className="py-2">Perfil</th>
               <th className="py-2">Equipe</th>
               <th className="py-2">Status</th>
               <th className="py-2"></th>
@@ -105,6 +108,24 @@ export function UsersTable({
                   <div className="text-xs text-ink-dim">{u.email}</div>
                 </td>
                 <td className="py-2">{ROLE_LABELS[u.role]}</td>
+                <td className="py-2">
+                  {u.role === "COLABORADOR" ? (
+                    <select
+                      className="input py-1 text-xs"
+                      defaultValue={u.perfil ?? "CONSULTIVO"}
+                      disabled={pending}
+                      onChange={(e) => run(() => api.patch(`/api/master/usuarios/${u.id}`, { perfil: e.target.value }))}
+                    >
+                      {PERFIS.map((p) => (
+                        <option key={p} value={p}>
+                          {PERFIL_LABELS[p]}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <span className="text-ink-dim text-xs">—</span>
+                  )}
+                </td>
                 <td className="py-2">
                   {u.role === "COLABORADOR" ? (
                     <select

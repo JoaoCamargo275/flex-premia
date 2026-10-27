@@ -109,6 +109,13 @@ export default function SupervisorColaboradorDetailPage() {
 
       <PeriodFilterForm />
 
+      {!painel.configurado && (
+        <div className="card p-4 border border-accent-3 text-accent-3 text-sm font-semibold">
+          🛠️ As réguas de faixas e metas do perfil deste colaborador ainda não foram cadastradas — os números abaixo ficam
+          zerados até lá.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <FrenteCard icon="📱" label={labelMV} lancado={painel.lancado.ptsMV} ativado={painel.ativado.ptsMV} />
         <FrenteCard icon="🚀" label="ALTAS" lancado={painel.lancado.ptsAltas} ativado={painel.ativado.ptsAltas} />

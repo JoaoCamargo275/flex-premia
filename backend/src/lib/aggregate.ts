@@ -222,6 +222,42 @@ async function getFaltouInjustificada(colaboradorId: string, period: PeriodFilte
 export interface PainelColaborador {
   lancado: ResultadoPremiacao;
   ativado: ResultadoPremiacao;
+  /** Perfil do colaborador (ver src/lib/types.ts). */
+  perfil: string;
+  /** false quando o perfil ainda não tem régua/cálculo de premiação implementado — ver resultadoNaoConfigurado(). */
+  configurado: boolean;
+}
+
+// Perfis cujo cálculo de premiação já está implementado (CONSULTIVO, via
+// calcularPremiacao/calcularPremiacaoAntiga). Qualquer colaborador com um
+// perfil fora desta lista (ex.: RENOVACAO_FIXA, até a régua/meta dele ser
+// definida) recebe um painel zerado com configurado=false, em vez de rodar
+// o cálculo do Consultivo nele por engano.
+const PERFIS_COM_CALCULO = new Set(["CONSULTIVO"]);
+
+function resultadoNaoConfigurado(legado: boolean): ResultadoPremiacao {
+  return {
+    ptsMV: 0,
+    ptsFBAVA: 0,
+    ptsAltas: 0,
+    ptsAltasPF: 0,
+    valorAparelhos: 0,
+    blAtivadas: 0,
+    faixaMV: 0,
+    faixaALTAS: 0,
+    faixaAltasPF: 0,
+    isZero: true,
+    destravou: false,
+    advance: false,
+    legado,
+    valorMV: 0,
+    valorALTAS: 0,
+    bonusAparelhosRS: 0,
+    bonusAltasPF: 0,
+    altasPFLiberado: false,
+    premiacaoFinal: 0,
+    faltouInjustificada: false,
+  };
 }
 
 // Agrupamento das 5 frentes usadas nas telas de acompanhamento (Master/Supervisor):
@@ -349,6 +385,17 @@ export async function getPainelColaborador(
   period: PeriodFilter = {}
 ): Promise<PainelColaborador> {
   const regraNova = usaRegraNova(period);
+  const colaborador = await prisma.user.findUnique({ where: { id: colaboradorId }, select: { perfil: true } });
+  const perfil = colaborador?.perfil ?? "CONSULTIVO";
+
+  if (!PERFIS_COM_CALCULO.has(perfil)) {
+    // Perfil ainda sem régua/meta definida (ex.: Renovação Fixa) — painel
+    // zerado e marcado como não configurado, sem rodar o cálculo do
+    // Consultivo nele.
+    const vazio = resultadoNaoConfigurado(!regraNova);
+    return { lancado: vazio, ativado: vazio, perfil, configurado: false };
+  }
+
   const tables = await getFaixaTables();
   const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou, blAtivadas] = await Promise.all([
     sumPontosPorIndicador(colaboradorId, period, regraNova),
@@ -367,5 +414,7 @@ export async function getPainelColaborador(
   return {
     lancado: calc(lancadoInput, tables),
     ativado: calc(ativadoInput, tables),
+    perfil,
+    configurado: true,
   };
 }

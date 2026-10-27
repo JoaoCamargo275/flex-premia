@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api } from "../../lib/api";
-import { ROLES, type Role } from "../../lib/types";
+import { ROLES, type Role, PERFIS, PERFIL_LABELS, type Perfil } from "../../lib/types";
 
 const ROLE_LABELS: Record<Role, string> = {
   MASTER: "Master",
@@ -19,6 +19,7 @@ export function CreateUserForm({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("SUPERVISOR");
+  const [perfil, setPerfil] = useState<Perfil>("CONSULTIVO");
   const [teamId, setTeamId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -35,6 +36,7 @@ export function CreateUserForm({
         email,
         password,
         role,
+        perfil: role === "COLABORADOR" ? perfil : undefined,
         teamId: role === "COLABORADOR" ? teamId || null : null,
       });
       setName("");
@@ -81,6 +83,18 @@ export function CreateUserForm({
           ))}
         </select>
       </div>
+      {role === "COLABORADOR" && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs uppercase tracking-wide text-ink-dim">Perfil</label>
+          <select className="input" value={perfil} onChange={(e) => setPerfil(e.target.value as Perfil)}>
+            {PERFIS.map((p) => (
+              <option key={p} value={p}>
+                {PERFIL_LABELS[p]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {role === "COLABORADOR" && (
         <div className="flex flex-col gap-1">
           <label className="text-xs uppercase tracking-wide text-ink-dim">Equipe</label>

@@ -1,6 +1,15 @@
 export const ROLES = ["MASTER", "SUPERVISOR", "COLABORADOR"] as const;
 export type Role = (typeof ROLES)[number];
 
+// Perfil do colaborador — define qual régua/meta/cálculo de premiação se
+// aplica. Só importa para role=COLABORADOR. Espelha backend/src/lib/types.ts.
+export const PERFIS = ["CONSULTIVO", "RENOVACAO_FIXA"] as const;
+export type Perfil = (typeof PERFIS)[number];
+export const PERFIL_LABELS: Record<Perfil, string> = {
+  CONSULTIVO: "Consultivo",
+  RENOVACAO_FIXA: "Renovação Fixa",
+};
+
 // O status da venda é texto livre digitado pelo colaborador — esta lista é
 // só uma sugestão (datalist) para agilizar o preenchimento. O cancelamento
 // de uma venda é controlado à parte pelo campo "cancelado" (ver SaleActions).

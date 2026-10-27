@@ -33,6 +33,10 @@ export interface ResultadoPremiacao {
 export interface PainelColaborador {
   lancado: ResultadoPremiacao;
   ativado: ResultadoPremiacao;
+  /** Perfil do colaborador (ver lib/types.ts). */
+  perfil: string;
+  /** false quando o perfil ainda não tem régua/meta configurada — painel vem zerado. */
+  configurado: boolean;
 }
 
 export interface FaixaRow {

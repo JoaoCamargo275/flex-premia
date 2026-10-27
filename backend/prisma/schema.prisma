@@ -16,6 +16,13 @@ datasource db {
 // validamos os valores na camada de aplicação (ver src/lib/types.ts).
 // Valores válidos:
 //   Role: MASTER | SUPERVISOR | COLABORADOR
+//   User.perfil (só importa para role=COLABORADOR): CONSULTIVO | RENOVACAO_FIXA
+//     — define qual conjunto de réguas/metas/cálculo de premiação se aplica
+//     ao colaborador (cada perfil tem sua própria lógica em
+//     src/lib/calculo-premiacao.ts / aggregate.ts). Novos perfis (ex.: FDV,
+//     Super, Gestão) entram do mesmo jeito, só adicionando a constante em
+//     src/lib/types.ts. Um colaborador de um perfil sem cálculo implementado
+//     ainda vê "painel não configurado" em vez de números errados.
 //   SaleItem.status: texto livre digitado pelo colaborador (ex: "Pendente", "Em instalação"...)
 //     — cada PRODUTO da venda tem seu próprio status e flag "ativo", já que
 //     produtos de uma mesma venda costumam ativar em datas diferentes. O
@@ -37,6 +44,8 @@ model User {
   email        String   @unique
   passwordHash String
   role         String
+  // Só relevante para role=COLABORADOR — ver comentário no topo do arquivo.
+  perfil       String   @default("CONSULTIVO")
   active       Boolean  @default(true)
   mustChangePassword Boolean @default(false)
 
