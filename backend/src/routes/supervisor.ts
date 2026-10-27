@@ -6,7 +6,14 @@ import { getTeamOverview, getEvolutionSeries } from "../lib/team-overview";
 import { getPainelColaborador } from "../lib/aggregate";
 import { parsePeriod } from "../lib/period";
 import { gerarSenhaTemporaria } from "../lib/temp-password";
-import { FRENTES_META, getMetasDoColaborador, setMetasDoColaborador, isFrenteMeta, type MetaValores } from "../lib/metas";
+import {
+  FRENTES_META,
+  frentesMetaDoPerfil,
+  getMetasDoColaborador,
+  setMetasDoColaborador,
+  isFrenteMeta,
+  type MetaValores,
+} from "../lib/metas";
 import { buildFechamentoSupervisorXlsx, nomeArquivoSeguro } from "../lib/fechamento";
 
 export const supervisorRouter = Router();
@@ -58,8 +65,9 @@ supervisorRouter.get("/colaboradores/:id", async (req: AuthedRequest, res) => {
   });
 });
 
-// Metas (RENOV MV, ALTAS PJ, Aparelhos) do colaborador — "padrão fixo" que
-// vale até o Supervisor editar de novo (não é redefinida mês a mês).
+// Metas do colaborador — quais frentes dependem do perfil dele (ver
+// frentesMetaDoPerfil) — "padrão fixo" que vale até o Supervisor editar de
+// novo (não é redefinida mês a mês).
 supervisorRouter.get("/colaboradores/:id/metas", async (req: AuthedRequest, res) => {
   const team = await prisma.team.findUnique({ where: { supervisorId: req.user!.sub } });
   const colaborador = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
@@ -68,7 +76,8 @@ supervisorRouter.get("/colaboradores/:id/metas", async (req: AuthedRequest, res)
     return;
   }
   const metas = await getMetasDoColaborador(colaborador.id);
-  res.json({ metas });
+  const frentesVisiveis = frentesMetaDoPerfil(colaborador.perfil);
+  res.json({ metas, frentesVisiveis });
 });
 
 supervisorRouter.put("/colaboradores/:id/metas", async (req: AuthedRequest, res) => {

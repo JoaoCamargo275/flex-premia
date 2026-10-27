@@ -4,7 +4,6 @@ import { api } from "../../lib/api";
 import { fmtBRL, fmtNum } from "../../lib/format";
 import { useMonthFilter } from "../../lib/month-filter-context";
 import {
-  FRENTES_META,
   FRENTE_META_LABEL,
   FRENTE_META_EMOJI,
   isValorFrenteMeta,
@@ -17,6 +16,7 @@ const COR_FRENTE: Record<FrenteMeta, string> = {
   mv: "#ec1a72",
   altas: "#8b3dff",
   aparelhos: "#c026d3",
+  fb: "#06b6d4",
 };
 
 function fmtFrente(frente: FrenteMeta, n: number): string {
@@ -142,9 +142,13 @@ export default function MetasPage() {
 
       {error && <p className="text-sm text-accent-3">{error}</p>}
 
-      {resumo && (
+      {resumo && resumo.frentesVisiveis.length === 0 && (
+        <p className="text-sm text-ink-dim">Seu perfil ainda não tem meta configurada.</p>
+      )}
+
+      {resumo && resumo.frentesVisiveis.length > 0 && (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {FRENTES_META.map((frente) => (
+          {resumo.frentesVisiveis.map((frente) => (
             <CardFrente key={frente} frente={frente} progresso={resumo.frentes[frente]} serie={resumo.series[frente]} />
           ))}
         </div>

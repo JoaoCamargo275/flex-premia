@@ -1,11 +1,25 @@
 import { prisma } from "./prisma";
 import type { PeriodFilter } from "./aggregate";
 
-// As 3 frentes principais que recebem meta (RENOV MV, ALTAS PJ, Aparelhos —
-// de propósito FORA: RENOV FB/AVA e ALTAS PF). Metas de MV/ALTAS são em
-// pontos, meta de Aparelhos é em R$ (mesma unidade usada no resto do app).
-export const FRENTES_META = ["mv", "altas", "aparelhos"] as const;
+// Todas as frentes que podem receber meta, somadas entre os perfis — qual
+// subconjunto é usado de fato depende do perfil do colaborador (ver
+// FRENTES_META_POR_PERFIL). Perfil Consultivo: RENOV MV, ALTAS PJ,
+// Aparelhos (de propósito FORA: RENOV FB/AVA e ALTAS PF). Perfil Renovação
+// Fixa: só RENOV. FB. MV/ALTAS/FB são em pontos, Aparelhos é em R$.
+export const FRENTES_META = ["mv", "altas", "aparelhos", "fb"] as const;
 export type FrenteMeta = (typeof FRENTES_META)[number];
+
+// Quais frentes de meta cada perfil efetivamente usa — define tanto o que o
+// Supervisor edita quanto o que o colaborador vê na aba "Metas" dele. Um
+// perfil fora daqui (ex.: futuro, ainda sem meta definida) não mostra nada.
+const FRENTES_META_POR_PERFIL: Record<string, readonly FrenteMeta[]> = {
+  CONSULTIVO: ["mv", "altas", "aparelhos"],
+  RENOVACAO_FIXA: ["fb"],
+};
+
+export function frentesMetaDoPerfil(perfil: string): readonly FrenteMeta[] {
+  return FRENTES_META_POR_PERFIL[perfil] ?? [];
+}
 
 export function isFrenteMeta(v: string): v is FrenteMeta {
   return (FRENTES_META as readonly string[]).includes(v);
@@ -15,6 +29,8 @@ function frenteMetaDoIndicador(indicator: string): FrenteMeta | null {
   switch (indicator) {
     case "RENOV_MV":
       return "mv";
+    case "RENOV_FB":
+      return "fb";
     case "ALTAS":
       return "altas";
     case "APARELHOS":
@@ -37,7 +53,7 @@ function metaVazia(): MetaValores {
 }
 
 function metasVazias(): MetasPorFrente {
-  return { mv: metaVazia(), altas: metaVazia(), aparelhos: metaVazia() };
+  return { mv: metaVazia(), altas: metaVazia(), aparelhos: metaVazia(), fb: metaVazia() };
 }
 
 // Metas "padrão fixo" do colaborador — um registro por frente, que vale até
@@ -123,13 +139,17 @@ export interface MetaSeriePonto {
 export interface MetasResumo {
   frentes: MetasProgresso;
   series: Record<FrenteMeta, MetaSeriePonto[]>;
+  /** Frentes que esse colaborador de fato usa, conforme o perfil dele (ver FRENTES_META_POR_PERFIL). */
+  frentesVisiveis: readonly FrenteMeta[];
 }
 
-// Progresso das 3 frentes com meta, sempre contado pelas vendas LANÇADAS
-// (Sale.createdAt) — nunca pelas ativadas, já que ativação pode levar até
-// 2 meses e inviabilizaria bater uma meta diária/semanal no mesmo período.
-// "Hoje" e "semana" são sempre em relação a AGORA (não navegam no tempo);
-// só o "mês" segue o período informado (mesmo seletor de mês do Meu Painel).
+// Progresso das frentes com meta — quais frentes dependem do perfil do
+// colaborador (ver FRENTES_META_POR_PERFIL) — sempre contado pelas vendas
+// LANÇADAS (Sale.createdAt), nunca pelas ativadas, já que ativação pode
+// levar até 2 meses e inviabilizaria bater uma meta diária/semanal no mesmo
+// período. "Hoje" e "semana" são sempre em relação a AGORA (não navegam no
+// tempo); só o "mês" segue o período informado (mesmo seletor de mês do Meu
+// Painel).
 export async function getMetasProgresso(userId: string, periodoMes: PeriodFilter): Promise<MetasResumo> {
   const now = new Date();
   const hojeInicio = startOfDay(now);
@@ -142,26 +162,34 @@ export async function getMetasProgresso(userId: string, periodoMes: PeriodFilter
   const rangeMin = new Date(Math.min(hojeInicio.getTime(), semanaInicio.getTime(), mesInicio.getTime()));
   const rangeMax = new Date(Math.max(hojeFim.getTime(), semanaFim.getTime(), mesFim.getTime()));
 
-  const [metas, items] = await Promise.all([
+  const [colaborador, metas, items] = await Promise.all([
+    prisma.user.findUnique({ where: { id: userId }, select: { perfil: true } }),
     getMetasDoColaborador(userId),
     prisma.saleItem.findMany({
       where: {
         sale: { colaboradorId: userId, cancelado: false, createdAt: { gte: rangeMin, lte: rangeMax } },
-        indicator: { in: ["RENOV_MV", "ALTAS", "APARELHOS"] },
+        indicator: { in: ["RENOV_MV", "RENOV_FB", "ALTAS", "APARELHOS"] },
       },
       select: { indicator: true, pointsTotal: true, valorReais: true, sale: { select: { createdAt: true } } },
     }),
   ]);
+  const frentesVisiveis = frentesMetaDoPerfil(colaborador?.perfil ?? "CONSULTIVO");
 
   const frentes: MetasProgresso = {
     mv: { meta: metas.mv, hoje: 0, semana: 0, mes: 0 },
     altas: { meta: metas.altas, hoje: 0, semana: 0, mes: 0 },
     aparelhos: { meta: metas.aparelhos, hoje: 0, semana: 0, mes: 0 },
+    fb: { meta: metas.fb, hoje: 0, semana: 0, mes: 0 },
   };
 
   // Pré-popula a série diária do mês selecionado com todos os dias em 0,
   // pra o gráfico ficar contínuo mesmo em dias sem venda nenhuma.
-  const seriesMap: Record<FrenteMeta, Map<string, number>> = { mv: new Map(), altas: new Map(), aparelhos: new Map() };
+  const seriesMap: Record<FrenteMeta, Map<string, number>> = {
+    mv: new Map(),
+    altas: new Map(),
+    aparelhos: new Map(),
+    fb: new Map(),
+  };
   const diasNoMes = new Date(mesInicio.getFullYear(), mesInicio.getMonth() + 1, 0).getDate();
   for (let dia = 1; dia <= diasNoMes; dia++) {
     const d = new Date(mesInicio.getFullYear(), mesInicio.getMonth(), dia);
@@ -171,7 +199,7 @@ export async function getMetasProgresso(userId: string, periodoMes: PeriodFilter
 
   for (const it of items) {
     const frente = frenteMetaDoIndicador(it.indicator);
-    if (!frente) continue;
+    if (!frente || !frentesVisiveis.includes(frente)) continue;
     const valor = frente === "aparelhos" ? it.valorReais ?? 0 : it.pointsTotal;
     const d = it.sale.createdAt;
     if (d >= hojeInicio && d <= hojeFim) frentes[frente].hoje += valor;
@@ -183,10 +211,10 @@ export async function getMetasProgresso(userId: string, periodoMes: PeriodFilter
     }
   }
 
-  const series: Record<FrenteMeta, MetaSeriePonto[]> = { mv: [], altas: [], aparelhos: [] };
+  const series: Record<FrenteMeta, MetaSeriePonto[]> = { mv: [], altas: [], aparelhos: [], fb: [] };
   for (const f of FRENTES_META) {
     series[f] = Array.from(seriesMap[f].entries()).map(([dia, valor]) => ({ dia, valor }));
   }
 
-  return { frentes, series };
+  return { frentes, series, frentesVisiveis };
 }
