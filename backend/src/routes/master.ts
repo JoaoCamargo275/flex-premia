@@ -152,11 +152,12 @@ masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
     }
 
     const perfilFinal = role === "COLABORADOR" ? perfil ?? "CONSULTIVO" : "CONSULTIVO";
-    // Entrando direto como Renovação Fixa, a data de rampagem já começa a
-    // valer: usa o que foi informado, ou hoje como padrão (editável depois).
+    // Perfil Renovação Fixa: perfilDesde é opcional — em branco significa
+    // SEM rampagem (direto na régua normal, ver mesRampagem em
+    // aggregate.ts). Só entra em rampagem se uma data for informada.
     let perfilDesdeFinal: Date | null = null;
-    if (perfilFinal === "RENOVACAO_FIXA") {
-      perfilDesdeFinal = perfilDesde ? new Date(perfilDesde) : new Date();
+    if (perfilFinal === "RENOVACAO_FIXA" && perfilDesde) {
+      perfilDesdeFinal = new Date(perfilDesde);
       if (Number.isNaN(perfilDesdeFinal.getTime())) throw new Error("Data de início no perfil inválida.");
     }
 
@@ -202,12 +203,9 @@ masterRouter.patch("/usuarios/:id", async (req: AuthedRequest, res) => {
       if (!user || user.role !== "COLABORADOR") throw new Error("Só é possível trocar o perfil de colaboradores.");
       if (!PERFIS.includes(perfil)) throw new Error("Perfil inválido.");
       data.perfil = perfil;
-      // Entrando agora na Renovação Fixa sem já ter uma data de rampagem
-      // definida, marca hoje como início — editável logo em seguida.
-      if (perfil === "RENOVACAO_FIXA" && perfilDesde === undefined) {
-        const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
-        if (!user?.perfilDesde) data.perfilDesde = new Date();
-      }
+      // Trocar de perfil não mexe sozinho em perfilDesde — fica como estava
+      // (em branco = sem rampagem) até o Master preencher uma data, se
+      // quiser. Edita perfilDesde explicitamente mandando esse campo.
     }
     if (perfilDesde !== undefined) {
       const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });

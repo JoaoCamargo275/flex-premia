@@ -111,7 +111,7 @@ export function CreateUserForm({
             onChange={(e) => setPerfilDesde(e.target.value)}
           />
           <span className="text-[.7rem] text-ink-dim">
-            Conta os meses de rampagem (régua com menos pontos exigidos nos 3 primeiros meses). Em branco, usa hoje.
+            Preenchendo, conta os 3 meses de rampagem (régua com menos pontos exigidos). Em branco, começa direto na régua normal, sem rampagem.
           </span>
         </div>
       )}
