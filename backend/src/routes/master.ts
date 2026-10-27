@@ -15,6 +15,23 @@ export const masterRouter = Router();
 
 masterRouter.use(requireAuth, requireRole("MASTER"));
 
+// Valida a data de "Início na Renovação Fixa" (perfilDesde). `new Date()`
+// aceita datas absurdas tipo "0002-10-01" como válidas (não dá NaN) — isso
+// aconteceu de verdade: o <input type="date"> dispara onChange a cada
+// tecla digitada, então um ano digitado pela metade (ex.: só "2" de
+// "2026") chegava a ser salvo. Por isso, além do NaN, trava um intervalo
+// de ano razoável.
+const ANO_MIN_PERFIL_DESDE = 2015;
+function parsePerfilDesde(iso: string): Date {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) throw new Error("Data de início no perfil inválida.");
+  const anoMax = new Date().getFullYear() + 1;
+  if (d.getFullYear() < ANO_MIN_PERFIL_DESDE || d.getFullYear() > anoMax) {
+    throw new Error(`Data de início no perfil fora do intervalo esperado (entre ${ANO_MIN_PERFIL_DESDE} e ${anoMax}).`);
+  }
+  return d;
+}
+
 masterRouter.get("/overview", async (req: AuthedRequest, res) => {
   const period = parsePeriod(req.query);
   const teamId = typeof req.query.teamId === "string" ? req.query.teamId : undefined;
@@ -157,8 +174,7 @@ masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
     // aggregate.ts). Só entra em rampagem se uma data for informada.
     let perfilDesdeFinal: Date | null = null;
     if (perfilFinal === "RENOVACAO_FIXA" && perfilDesde) {
-      perfilDesdeFinal = new Date(perfilDesde);
-      if (Number.isNaN(perfilDesdeFinal.getTime())) throw new Error("Data de início no perfil inválida.");
+      perfilDesdeFinal = parsePerfilDesde(perfilDesde);
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -213,9 +229,7 @@ masterRouter.patch("/usuarios/:id", async (req: AuthedRequest, res) => {
       if (perfilDesde === null) {
         data.perfilDesde = null;
       } else {
-        const d = new Date(perfilDesde);
-        if (Number.isNaN(d.getTime())) throw new Error("Data de início no perfil inválida.");
-        data.perfilDesde = d;
+        data.perfilDesde = parsePerfilDesde(perfilDesde);
       }
     }
     await prisma.user.update({ where: { id: (req.params.id as string) }, data });

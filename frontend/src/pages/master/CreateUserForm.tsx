@@ -108,6 +108,8 @@ export function CreateUserForm({
             type="date"
             className="input"
             value={perfilDesde}
+            min="2015-01-01"
+            max={`${new Date().getFullYear() + 1}-12-31`}
             onChange={(e) => setPerfilDesde(e.target.value)}
           />
           <span className="text-[.7rem] text-ink-dim">
