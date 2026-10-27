@@ -36,6 +36,10 @@ datasource db {
 //     Renovação Fixa) e BL_BONUS_RENOV_FIXA (degraus do bônus de BL desse
 //     perfil — reaproveita as colunas pts/valor da tabela como "qtd mínima
 //     de BL" / "R$ do degrau", não é uma régua de pontuação de verdade).
+//     Também usa RENOV_FIXA_M1/M2/M3 — réguas de "rampagem" do mesmo perfil:
+//     mesmos valores em R$ de RENOV_FIXA, mas pts menor, usadas nos 3
+//     primeiros meses do colaborador no perfil (ver User.perfilDesde e
+//     mesRampagem() em src/lib/aggregate.ts).
 
 model Team {
   id           String   @id @default(cuid())
@@ -54,6 +58,12 @@ model User {
   role         String
   // Só relevante para role=COLABORADOR — ver comentário no topo do arquivo.
   perfil       String   @default("CONSULTIVO")
+  // Perfil RENOVACAO_FIXA: data em que o colaborador entrou nesse perfil —
+  // usada só pra calcular o "mês de rampagem" (os 3 primeiros meses usam
+  // régua com menos pontos exigidos, mesmo valor em R$ — ver mesRampagem()
+  // em aggregate.ts). Editável pelo Supervisor/Master. Null = sem rampagem
+  // (usa a régua normal direto).
+  perfilDesde  DateTime?
   active       Boolean  @default(true)
   mustChangePassword Boolean @default(false)
 

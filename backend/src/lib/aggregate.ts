@@ -22,19 +22,35 @@ export function usaRegraNova(period: PeriodFilter): boolean {
 }
 
 export async function getFaixaTables(): Promise<FaixaTables> {
-  const [mv, fbava, altas, altasPF, aparelhoFaixas, aparelhoBonus, mvAntiga, altasAntiga, renovFixa, blBonusRenovFixa] =
-    await Promise.all([
-      prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV" }, orderBy: { faixa: "asc" } }),
-      prisma.faixaTable.findMany({ where: { indicator: "RENOV_FBAVA" }, orderBy: { faixa: "asc" } }),
-      prisma.faixaTable.findMany({ where: { indicator: "ALTAS" }, orderBy: { faixa: "asc" } }),
-      prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PF" }, orderBy: { faixa: "asc" } }),
-      prisma.aparelhoFaixa.findMany({ orderBy: { faixa: "asc" } }),
-      prisma.aparelhoBonus.findMany({ orderBy: { faixa: "asc" } }),
-      prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
-      prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
-      prisma.faixaTable.findMany({ where: { indicator: "RENOV_FIXA" }, orderBy: { faixa: "asc" } }),
-      prisma.faixaTable.findMany({ where: { indicator: "BL_BONUS_RENOV_FIXA" }, orderBy: { faixa: "asc" } }),
-    ]);
+  const [
+    mv,
+    fbava,
+    altas,
+    altasPF,
+    aparelhoFaixas,
+    aparelhoBonus,
+    mvAntiga,
+    altasAntiga,
+    renovFixa,
+    blBonusRenovFixa,
+    renovFixaM1,
+    renovFixaM2,
+    renovFixaM3,
+  ] = await Promise.all([
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_FBAVA" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "ALTAS" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PF" }, orderBy: { faixa: "asc" } }),
+    prisma.aparelhoFaixa.findMany({ orderBy: { faixa: "asc" } }),
+    prisma.aparelhoBonus.findMany({ orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_MV_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "ALTAS_PRE_OUT26" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_FIXA" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "BL_BONUS_RENOV_FIXA" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_FIXA_M1" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_FIXA_M2" }, orderBy: { faixa: "asc" } }),
+    prisma.faixaTable.findMany({ where: { indicator: "RENOV_FIXA_M3" }, orderBy: { faixa: "asc" } }),
+  ]);
   return {
     faixasMV: mv,
     faixasFbava: fbava,
@@ -46,7 +62,30 @@ export async function getFaixaTables(): Promise<FaixaTables> {
     faixasAltasAntiga: altasAntiga,
     faixasRenovFixa: renovFixa,
     blBonusRenovFixa,
+    faixasRenovFixaRampagem: { 1: renovFixaM1, 2: renovFixaM2, 3: renovFixaM3 },
   };
+}
+
+// Perfil Renovação Fixa — "rampagem": quantos meses após User.perfilDesde o
+// colaborador ainda usa uma régua com menos pontos exigidos (mesmo R$ por
+// faixa) — ver calcularPremiacaoRenovFixa. Decide pelo mês do período
+// CALCULADO (periodFrom), igual a usaRegraNova — não pelo mês atual.
+export const RAMPAGEM_MESES = 3;
+
+// Devolve o mês de rampagem (1, 2 ou 3) pra esse período, ou null se o
+// colaborador não está em rampagem (sem perfilDesde definido, já passou dos
+// RAMPAGEM_MESES, ou o período é anterior à entrada no perfil).
+export function mesRampagem(perfilDesde: Date | null | undefined, periodFrom: Date | undefined): number | null {
+  if (!perfilDesde) return null;
+  // Sem filtro de mês (consulta de todo o histórico) usa o mês atual como
+  // referência — não faz sentido "rampagem" pra uma consulta sem mês.
+  const refMonth = periodFrom ?? new Date();
+  const inicioIndex = perfilDesde.getFullYear() * 12 + perfilDesde.getMonth();
+  const refIndex = refMonth.getFullYear() * 12 + refMonth.getMonth();
+  const diff = refIndex - inicioIndex; // 0 = mês de entrada no perfil
+  if (diff < 0) return null;
+  const mes = diff + 1; // 1-indexado (mês de entrada = mês 1)
+  return mes <= RAMPAGEM_MESES ? mes : null;
 }
 
 export interface PeriodFilter {
@@ -236,6 +275,8 @@ export interface PainelColaborador {
   perfil: string;
   /** false quando o perfil ainda não tem régua/cálculo de premiação implementado — ver resultadoNaoConfigurado(). */
   configurado: boolean;
+  /** Perfil Renovação Fixa em rampagem: 1, 2 ou 3 (ver mesRampagem()); null fora de rampagem ou em outros perfis. */
+  mesRampagem: number | null;
 }
 
 // Perfis cujo cálculo de premiação já está implementado. Qualquer
@@ -397,7 +438,10 @@ export async function getPainelColaborador(
   period: PeriodFilter = {}
 ): Promise<PainelColaborador> {
   const regraNova = usaRegraNova(period);
-  const colaborador = await prisma.user.findUnique({ where: { id: colaboradorId }, select: { perfil: true } });
+  const colaborador = await prisma.user.findUnique({
+    where: { id: colaboradorId },
+    select: { perfil: true, perfilDesde: true },
+  });
   const perfil = colaborador?.perfil ?? "CONSULTIVO";
 
   if (!PERFIS_COM_CALCULO.has(perfil)) {
@@ -405,14 +449,23 @@ export async function getPainelColaborador(
     // zerado e marcado como não configurado, sem rodar o cálculo do
     // Consultivo nele.
     const vazio = resultadoNaoConfigurado(!regraNova);
-    return { lancado: vazio, ativado: vazio, perfil, configurado: false };
+    return { lancado: vazio, ativado: vazio, perfil, configurado: false, mesRampagem: null };
   }
 
   // Perfil Renovação Fixa não segue o cutover OUT/2026 (perfil novo, sem
   // "regra antiga") e nunca tem carência, em nenhum indicador.
   const ehRenovFixa = perfil === "RENOVACAO_FIXA";
+  const mesRamp = ehRenovFixa ? mesRampagem(colaborador?.perfilDesde, period.from) : null;
 
   const tables = await getFaixaTables();
+  // Em rampagem, troca a régua principal pela versão com menos pontos
+  // exigidos (mesmo R$ por faixa) — só se ela já tiver linhas cadastradas;
+  // sem isso, cai de volta na régua normal (não quebra nem zera o painel
+  // enquanto a régua daquele mês ainda não foi configurada).
+  const faixaRampagem = mesRamp ? tables.faixasRenovFixaRampagem[mesRamp] : undefined;
+  const tablesParaCalculo: FaixaTables =
+    faixaRampagem && faixaRampagem.length > 0 ? { ...tables, faixasRenovFixa: faixaRampagem } : tables;
+
   const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou, blAtivadas] = await Promise.all([
     sumPontosPorIndicador(colaboradorId, period, regraNova, ehRenovFixa),
     getFaltouInjustificada(colaboradorId, period),
@@ -428,9 +481,10 @@ export async function getPainelColaborador(
 
   const calc = ehRenovFixa ? calcularPremiacaoRenovFixa : regraNova ? calcularPremiacao : calcularPremiacaoAntiga;
   return {
-    lancado: calc(lancadoInput, tables),
-    ativado: calc(ativadoInput, tables),
+    lancado: calc(lancadoInput, tablesParaCalculo),
+    ativado: calc(ativadoInput, tablesParaCalculo),
     perfil,
     configurado: true,
+    mesRampagem: mesRamp,
   };
 }

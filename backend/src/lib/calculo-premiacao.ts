@@ -146,6 +146,15 @@ export interface FaixaTables {
   /** Perfil Renovação Fixa — régua única (pool RENOV. MV + RENOV. FB + ALTAS) e degraus de bônus de BL. */
   faixasRenovFixa: FaixaRow[];
   blBonusRenovFixa: FaixaRow[];
+  /**
+   * Perfil Renovação Fixa "rampagem": réguas alternativas pra régua
+   * principal (faixasRenovFixa) — mesmos R$ por faixa, pts exigido menor —
+   * usadas só nos primeiros meses do colaborador no perfil. Chave = mês de
+   * rampagem (1, 2, 3...), ver mesRampagem() em aggregate.ts. Quem decide
+   * qual entra no cálculo é o aggregate.ts, trocando faixasRenovFixa antes
+   * de chamar calcularPremiacaoRenovFixa — a função em si não olha pra isto.
+   */
+  faixasRenovFixaRampagem: Record<number, FaixaRow[]>;
 }
 
 export interface ResultadoPremiacao {
@@ -345,6 +354,13 @@ export function calcularPremiacaoAntiga(input: PontosAgregados, tables: FaixaTab
  *    de registro (ver aggregate.ts — perfil sempre semCarencia=true).
  *  - Assiduidade: falta injustificada zera toda a premiação, igual aos
  *    demais perfis.
+ *  - "Rampagem": nos 3 primeiros meses do colaborador no perfil (contados a
+ *    partir de User.perfilDesde), a régua principal usa menos pontos por
+ *    faixa — mesmos R$ de sempre. Essa troca é decidida ANTES de chamar esta
+ *    função: o aggregate.ts já entrega `tables.faixasRenovFixa` substituída
+ *    pela régua de rampagem certa (ver mesRampagem() e
+ *    FaixaTables.faixasRenovFixaRampagem) — esta função não sabe se está
+ *    rodando com a régua normal ou com uma de rampagem.
  */
 export function calcularPremiacaoRenovFixa(input: PontosAgregados, tables: FaixaTables): ResultadoPremiacao {
   const { faixasRenovFixa, blBonusRenovFixa, aparelhoBonus } = tables;

@@ -20,6 +20,10 @@ export function CreateUserForm({
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<Role>("SUPERVISOR");
   const [perfil, setPerfil] = useState<Perfil>("CONSULTIVO");
+  // Perfil Renovação Fixa: data de entrada no perfil, usada pra contar os
+  // meses de "rampagem" (régua com menos pontos exigidos nos 3 primeiros
+  // meses — ver mesRampagem em aggregate.ts). Vazio = backend usa hoje.
+  const [perfilDesde, setPerfilDesde] = useState("");
   const [teamId, setTeamId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -37,11 +41,13 @@ export function CreateUserForm({
         password,
         role,
         perfil: role === "COLABORADOR" ? perfil : undefined,
+        perfilDesde: role === "COLABORADOR" && perfil === "RENOVACAO_FIXA" ? perfilDesde || undefined : undefined,
         teamId: role === "COLABORADOR" ? teamId || null : null,
       });
       setName("");
       setEmail("");
       setPassword("");
+      setPerfilDesde("");
       setSuccess(true);
       onCreated();
     } catch (err) {
@@ -93,6 +99,20 @@ export function CreateUserForm({
               </option>
             ))}
           </select>
+        </div>
+      )}
+      {role === "COLABORADOR" && perfil === "RENOVACAO_FIXA" && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs uppercase tracking-wide text-ink-dim">Início na Renovação Fixa</label>
+          <input
+            type="date"
+            className="input"
+            value={perfilDesde}
+            onChange={(e) => setPerfilDesde(e.target.value)}
+          />
+          <span className="text-[.7rem] text-ink-dim">
+            Conta os meses de rampagem (régua com menos pontos exigidos nos 3 primeiros meses). Em branco, usa hoje.
+          </span>
         </div>
       )}
       {role === "COLABORADOR" && (

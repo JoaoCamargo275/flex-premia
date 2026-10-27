@@ -621,11 +621,26 @@ function BLBonusTable({ rows, qtdAtual, bonusAtual }: { rows: FaixaRow[]; qtdAtu
  */
 function PainelRenovFixa({ painel, faixas }: { painel: PainelColaborador; faixas: FaixaTables }) {
   const { lancado, ativado } = painel;
-  const faixaMaxima = faixas.faixasRenovFixa[faixas.faixasRenovFixa.length - 1]?.faixa ?? 0;
-  const semTeto = ativado.faixaMV === faixaMaxima && alemDoTeto(faixas.faixasRenovFixa, ativado.ptsMV);
+  // Em rampagem, a régua usada no cálculo deste período é a de rampagem
+  // (menos pts, mesmo R$) — só cai na normal se essa régua ainda não tiver
+  // sido cadastrada (mesma regra de segurança do backend, ver aggregate.ts).
+  const reguaRampagem = painel.mesRampagem ? faixas.faixasRenovFixaRampagem[painel.mesRampagem] : undefined;
+  const reguaAtual = reguaRampagem && reguaRampagem.length > 0 ? reguaRampagem : faixas.faixasRenovFixa;
+  const faixaMaxima = reguaAtual[reguaAtual.length - 1]?.faixa ?? 0;
+  const semTeto = ativado.faixaMV === faixaMaxima && alemDoTeto(reguaAtual, ativado.ptsMV);
 
   return (
     <div className="flex flex-col gap-8">
+      {painel.mesRampagem && (
+        <div
+          className="text-xs font-bold rounded-lg px-3 py-2"
+          style={{ background: "rgba(34,197,94,.12)", color: "var(--good)", border: "1px solid rgba(34,197,94,.35)" }}
+        >
+          🚀 Mês {painel.mesRampagem} de 3 em rampagem — a régua abaixo já está com a pontuação reduzida desse período
+          (o valor em R$ de cada faixa é o mesmo de sempre).
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 gap-4">
         <div className="card p-5">
           <div className="text-xs uppercase tracking-wide text-ink-dim mb-1">Pontos lançados (pool único)</div>
@@ -687,8 +702,8 @@ function PainelRenovFixa({ painel, faixas }: { painel: PainelColaborador; faixas
         </h3>
         <div className="grid md:grid-cols-2 gap-4">
           <MiniFaixaTable
-            title="RENOV. MV + RENOV. FB + ALTAS (pool único)"
-            rows={faixas.faixasRenovFixa}
+            title={`RENOV. MV + RENOV. FB + ALTAS (pool único)${painel.mesRampagem ? ` — rampagem mês ${painel.mesRampagem}` : ""}`}
+            rows={reguaAtual}
             faixaAtual={ativado.faixaMV}
             ptsAtual={ativado.ptsMV}
             color={COLORS.mv}

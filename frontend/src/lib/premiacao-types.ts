@@ -39,6 +39,8 @@ export interface PainelColaborador {
   perfil: string;
   /** false quando o perfil ainda não tem régua/meta configurada — painel vem zerado. */
   configurado: boolean;
+  /** Perfil Renovação Fixa em rampagem: 1, 2 ou 3; null fora de rampagem ou em outros perfis. */
+  mesRampagem: number | null;
 }
 
 export interface FaixaRow {
@@ -74,6 +76,8 @@ export interface FaixaTables {
   /** Perfil Renovação Fixa — régua única e degraus de bônus de BL. */
   faixasRenovFixa: FaixaRow[];
   blBonusRenovFixa: FaixaRow[];
+  /** Perfil Renovação Fixa "rampagem" — réguas alternativas (mesmo R$, menos pts) por mês de rampagem (1, 2, 3). */
+  faixasRenovFixaRampagem: Record<number, FaixaRow[]>;
 }
 
 export interface FrenteBreakdown {

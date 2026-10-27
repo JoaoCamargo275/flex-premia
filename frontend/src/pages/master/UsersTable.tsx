@@ -8,10 +8,17 @@ export interface UserRow {
   email: string;
   role: "MASTER" | "SUPERVISOR" | "COLABORADOR";
   perfil: Perfil | null;
+  /** Perfil Renovação Fixa: data de entrada no perfil (conta os meses de rampagem) — ISO string ou null. */
+  perfilDesde: string | null;
   active: boolean;
   teamId: string | null;
   teamName: string | null;
   passwordResetRequested: boolean;
+}
+
+function paraInputDate(iso: string | null): string {
+  if (!iso) return "";
+  return iso.slice(0, 10);
 }
 
 const ROLE_LABELS: Record<UserRow["role"], string> = {
@@ -110,18 +117,35 @@ export function UsersTable({
                 <td className="py-2">{ROLE_LABELS[u.role]}</td>
                 <td className="py-2">
                   {u.role === "COLABORADOR" ? (
-                    <select
-                      className="input py-1 text-xs"
-                      defaultValue={u.perfil ?? "CONSULTIVO"}
-                      disabled={pending}
-                      onChange={(e) => run(() => api.patch(`/api/master/usuarios/${u.id}`, { perfil: e.target.value }))}
-                    >
-                      {PERFIS.map((p) => (
-                        <option key={p} value={p}>
-                          {PERFIL_LABELS[p]}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex flex-col gap-1">
+                      <select
+                        className="input py-1 text-xs"
+                        defaultValue={u.perfil ?? "CONSULTIVO"}
+                        disabled={pending}
+                        onChange={(e) => run(() => api.patch(`/api/master/usuarios/${u.id}`, { perfil: e.target.value }))}
+                      >
+                        {PERFIS.map((p) => (
+                          <option key={p} value={p}>
+                            {PERFIL_LABELS[p]}
+                          </option>
+                        ))}
+                      </select>
+                      {u.perfil === "RENOVACAO_FIXA" && (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[.62rem] text-ink-dim whitespace-nowrap">Início:</span>
+                          <input
+                            type="date"
+                            className="input py-1 text-xs"
+                            defaultValue={paraInputDate(u.perfilDesde)}
+                            disabled={pending}
+                            title="Data de entrada na Renovação Fixa — conta os meses de rampagem"
+                            onChange={(e) =>
+                              run(() => api.patch(`/api/master/usuarios/${u.id}`, { perfilDesde: e.target.value || null }))
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
                   ) : (
                     <span className="text-ink-dim text-xs">—</span>
                   )}

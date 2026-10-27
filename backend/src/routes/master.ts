@@ -71,6 +71,8 @@ masterRouter.get("/colaboradores/:id", async (req: AuthedRequest, res) => {
       name: colaborador.name,
       email: colaborador.email,
       teamName: colaborador.team?.name ?? null,
+      perfil: colaborador.perfil,
+      perfilDesde: colaborador.perfilDesde,
     },
     painel,
     produtos,
@@ -92,6 +94,7 @@ masterRouter.get("/usuarios", async (_req, res) => {
       email: u.email,
       role: u.role,
       perfil: u.role === "COLABORADOR" ? u.perfil : null,
+      perfilDesde: u.role === "COLABORADOR" ? u.perfilDesde : null,
       active: u.active,
       teamId: u.teamId,
       teamName: u.team?.name ?? null,
@@ -128,13 +131,15 @@ masterRouter.post("/usuarios/:id/resetar-senha", async (req: AuthedRequest, res)
 masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
   try {
     const master = req.user!;
-    const { name, email: rawEmail, password, role, teamId, perfil } = req.body as {
+    const { name, email: rawEmail, password, role, teamId, perfil, perfilDesde } = req.body as {
       name: string;
       email: string;
       password: string;
       role: Role;
       teamId?: string | null;
       perfil?: Perfil;
+      /** Perfil Renovação Fixa: data de entrada no perfil (ver mesRampagem em aggregate.ts). ISO (YYYY-MM-DD). */
+      perfilDesde?: string | null;
     };
 
     if (!password || password.length < 8) throw new Error("A senha deve ter ao menos 8 caracteres.");
@@ -146,6 +151,15 @@ masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
       throw new Error("Perfil inválido.");
     }
 
+    const perfilFinal = role === "COLABORADOR" ? perfil ?? "CONSULTIVO" : "CONSULTIVO";
+    // Entrando direto como Renovação Fixa, a data de rampagem já começa a
+    // valer: usa o que foi informado, ou hoje como padrão (editável depois).
+    let perfilDesdeFinal: Date | null = null;
+    if (perfilFinal === "RENOVACAO_FIXA") {
+      perfilDesdeFinal = perfilDesde ? new Date(perfilDesde) : new Date();
+      if (Number.isNaN(perfilDesdeFinal.getTime())) throw new Error("Data de início no perfil inválida.");
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
     await prisma.user.create({
       data: {
@@ -153,7 +167,8 @@ masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
         email,
         passwordHash,
         role,
-        perfil: role === "COLABORADOR" ? perfil ?? "CONSULTIVO" : "CONSULTIVO",
+        perfil: perfilFinal,
+        perfilDesde: perfilDesdeFinal,
         teamId: role === "COLABORADOR" ? teamId ?? null : null,
         createdById: master.sub,
         mustChangePassword: true,
@@ -168,8 +183,14 @@ masterRouter.post("/usuarios", async (req: AuthedRequest, res) => {
 
 masterRouter.patch("/usuarios/:id", async (req: AuthedRequest, res) => {
   try {
-    const { active, teamId, perfil } = req.body as { active?: boolean; teamId?: string | null; perfil?: Perfil };
-    const data: { active?: boolean; teamId?: string | null; perfil?: Perfil } = {};
+    const { active, teamId, perfil, perfilDesde } = req.body as {
+      active?: boolean;
+      teamId?: string | null;
+      perfil?: Perfil;
+      /** Perfil Renovação Fixa: data de entrada no perfil, ISO (YYYY-MM-DD) ou null pra limpar. */
+      perfilDesde?: string | null;
+    };
+    const data: { active?: boolean; teamId?: string | null; perfil?: Perfil; perfilDesde?: Date | null } = {};
     if (typeof active === "boolean") data.active = active;
     if (teamId !== undefined) {
       const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
@@ -181,6 +202,23 @@ masterRouter.patch("/usuarios/:id", async (req: AuthedRequest, res) => {
       if (!user || user.role !== "COLABORADOR") throw new Error("Só é possível trocar o perfil de colaboradores.");
       if (!PERFIS.includes(perfil)) throw new Error("Perfil inválido.");
       data.perfil = perfil;
+      // Entrando agora na Renovação Fixa sem já ter uma data de rampagem
+      // definida, marca hoje como início — editável logo em seguida.
+      if (perfil === "RENOVACAO_FIXA" && perfilDesde === undefined) {
+        const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+        if (!user?.perfilDesde) data.perfilDesde = new Date();
+      }
+    }
+    if (perfilDesde !== undefined) {
+      const user = await prisma.user.findUnique({ where: { id: (req.params.id as string) } });
+      if (!user || user.role !== "COLABORADOR") throw new Error("Só é possível editar isso em colaboradores.");
+      if (perfilDesde === null) {
+        data.perfilDesde = null;
+      } else {
+        const d = new Date(perfilDesde);
+        if (Number.isNaN(d.getTime())) throw new Error("Data de início no perfil inválida.");
+        data.perfilDesde = d;
+      }
     }
     await prisma.user.update({ where: { id: (req.params.id as string) }, data });
     res.json({ ok: true });
