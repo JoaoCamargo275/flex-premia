@@ -48,7 +48,7 @@ function bonusAparelhoAtual(rows: AparelhoBonusRow[], valor: number): AparelhoBo
 
 const ROW_H = 104; // altura de cada linha da corrida de barras, em px
 const MEDALS = ["🥇", "🥈", "🥉", "🏅"];
-const ICONS: Record<string, string> = { mv: "📱", altas: "🚀", altas_pf: "🧑", aparelhos: "💰" };
+const ICONS: Record<string, string> = { mv: "📱", fbava: "📶", altas: "🚀", altas_pf: "🧑", aparelhos: "💰" };
 // RENOV. MV (já com FB/AVA somado) e ALTAS usam a mesma progressão de
 // pontos por faixa (200/300/400/500/600/700/800/1000 — Faixas 1 a 8), então
 // convertida para fração da Faixa 8, as posições das linhas de grade caem
@@ -149,6 +149,10 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
   const legado = painel.ativado.legado;
   const fAltasPFAtivado = faixaAlcancada(faixas.faixasAltasPF, painel.ativado.ptsAltasPF);
   const bonusAparelhoAtivado = bonusAparelhoAtual(faixas.aparelhoBonus, painel.ativado.valorAparelhos);
+  // Só existe régua/bônus próprios de RENOV. FB/AVA em meses ANTIGOS (legado)
+  // — na regra nova, FB/AVA já vem somado dentro de ptsMV (ver comentário
+  // abaixo), então não há barra separada pra não contar em dobro.
+  const fFBAVAAtivado = legado ? faixaAlcancada(faixas.faixasFbava, painel.ativado.ptsFBAVA) : undefined;
 
   // RENOV. MV (já com FB/AVA somado) e ALTAS são frentes independentes —
   // cada uma mostra a própria faixa. ALTAS PF é bônus à parte (depende de a
@@ -159,6 +163,7 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
   const faixasMVAtual = legado ? faixas.faixasMVAntiga : faixas.faixasMV;
   const faixasAltasAtual = legado ? faixas.faixasAltasAntiga : faixas.faixasAltas;
   const mvMax = faixasMVAtual[faixasMVAtual.length - 1]?.pts ?? 1;
+  const fbavaMax = faixas.faixasFbava[faixas.faixasFbava.length - 1]?.pts ?? 1;
   const altasMax = faixasAltasAtual[faixasAltasAtual.length - 1]?.pts ?? 1;
   const altasPFMax = faixas.faixasAltasPF[faixas.faixasAltasPF.length - 1]?.pts ?? 1;
   const aparelhosMax = faixas.aparelhoBonus[faixas.aparelhoBonus.length - 1]?.valor ?? 1;
@@ -174,6 +179,20 @@ function FrenteBarRace({ painel, faixas }: { painel: PainelColaborador; faixas: 
       unidade: "pts",
       faixaLabel: `Faixa ${painel.ativado.faixaMV}`,
     },
+    ...(legado && fFBAVAAtivado
+      ? [
+          {
+            id: "fbava",
+            label: "RENOV. FB/AVA",
+            color: COLORS.fbava,
+            lancado: painel.lancado.ptsFBAVA,
+            ativado: painel.ativado.ptsFBAVA,
+            scaleMax: fbavaMax,
+            unidade: "pts" as const,
+            faixaLabel: `Faixa ${fFBAVAAtivado.faixa}`,
+          },
+        ]
+      : []),
     {
       id: "altas",
       label: "ALTAS",
