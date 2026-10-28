@@ -18,6 +18,7 @@ import { prisma } from "./prisma";
 import {
   dentroDoPeriodo,
   dataConsideradaAtivacao,
+  semCarenciaParaItem,
   getPainelColaborador,
   type PeriodFilter,
 } from "./aggregate";
@@ -133,27 +134,32 @@ export async function getVendasAtivadasDetalhadas(
   colaboradorId: string,
   period: PeriodFilter
 ): Promise<VendaAtivadaRow[]> {
-  const items = await prisma.saleItem.findMany({
-    where: {
-      sale: { colaboradorId, cancelado: false },
-      ativo: true,
-    },
-    select: {
-      indicator: true,
-      label: true,
-      quantity: true,
-      pointsTotal: true,
-      valorReais: true,
-      ativo: true,
-      dataAtivacao: true,
-      catalogItem: { select: { price: true } },
-      sale: { select: { clienteNome: true, clienteCnpj: true, createdAt: true } },
-    },
-  });
+  const [colaborador, items] = await Promise.all([
+    prisma.user.findUnique({ where: { id: colaboradorId }, select: { perfil: true } }),
+    prisma.saleItem.findMany({
+      where: {
+        sale: { colaboradorId, cancelado: false },
+        ativo: true,
+      },
+      select: {
+        indicator: true,
+        label: true,
+        quantity: true,
+        pointsTotal: true,
+        valorReais: true,
+        ativo: true,
+        dataAtivacao: true,
+        catalogItem: { select: { price: true, categoryId: true } },
+        sale: { select: { clienteNome: true, clienteCnpj: true, createdAt: true } },
+      },
+    }),
+  ]);
+  const ehRenovFixa = colaborador?.perfil === "RENOVACAO_FIXA";
 
   const rows: VendaAtivadaRow[] = [];
   for (const it of items) {
-    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    const semCarencia = semCarenciaParaItem(it.sale.createdAt, it.indicator, it.catalogItem?.categoryId, ehRenovFixa);
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     if (!dataConsiderada || !dentroDoPeriodo(dataConsiderada, period)) continue;
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;

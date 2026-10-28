@@ -1,5 +1,21 @@
 import { prisma } from "./prisma";
-import { getFaixaTables, getPainelColaborador, dentroDoPeriodo, dataConsideradaAtivacao, type PeriodFilter } from "./aggregate";
+import {
+  getFaixaTables,
+  getPainelColaborador,
+  dentroDoPeriodo,
+  dataConsideradaAtivacao,
+  semCarenciaParaItem,
+  type PeriodFilter,
+} from "./aggregate";
+
+// Mapa colaboradorId -> "é perfil Renovação Fixa?" — usado pra decidir a
+// regra de carência item a item (ver semCarenciaParaItem em aggregate.ts)
+// nas funções abaixo que agregam vários colaboradores de uma vez.
+async function buildEhRenovFixaMap(userIds: string[]): Promise<Map<string, boolean>> {
+  if (userIds.length === 0) return new Map();
+  const users = await prisma.user.findMany({ where: { id: { in: userIds } }, select: { id: true, perfil: true } });
+  return new Map(users.map((u) => [u.id, u.perfil === "RENOVACAO_FIXA"]));
+}
 
 // Quantidade lançada/ativada de uma frente para um colaborador — usada tanto
 // nos pontos (RENOV. MV/FB-AVA/ALTAS) quanto no valor em R$ de Aparelhos.
@@ -148,18 +164,29 @@ async function getQuantidadesPorFrente(
 async function getTaxaAtivacaoColaboradores(userIds: string[], period: PeriodFilter): Promise<number> {
   if (userIds.length === 0) return 0;
   const range = dateRangeClause(period);
-  const items = await prisma.saleItem.findMany({
-    where: {
-      sale: { colaboradorId: { in: userIds }, cancelado: false },
-      ativo: true,
-      ...(range ? { OR: [{ sale: { createdAt: range } }, { dataAtivacao: range }] } : {}),
-    },
-    select: { ativo: true, dataAtivacao: true, sale: { select: { colaboradorId: true, createdAt: true } } },
-  });
+  const [items, ehRenovFixaMap] = await Promise.all([
+    prisma.saleItem.findMany({
+      where: {
+        sale: { colaboradorId: { in: userIds }, cancelado: false },
+        ativo: true,
+        ...(range ? { OR: [{ sale: { createdAt: range } }, { dataAtivacao: range }] } : {}),
+      },
+      select: {
+        indicator: true,
+        ativo: true,
+        dataAtivacao: true,
+        catalogItem: { select: { categoryId: true } },
+        sale: { select: { colaboradorId: true, createdAt: true } },
+      },
+    }),
+    buildEhRenovFixaMap(userIds),
+  ]);
 
   const ativos = new Set<string>();
   for (const it of items) {
-    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    const ehRenovFixa = ehRenovFixaMap.get(it.sale.colaboradorId) ?? false;
+    const semCarencia = semCarenciaParaItem(it.sale.createdAt, it.indicator, it.catalogItem?.categoryId, ehRenovFixa);
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     if (dataConsiderada && dentroDoPeriodo(dataConsiderada, period)) ativos.add(it.sale.colaboradorId);
   }
   return (ativos.size / userIds.length) * 100;
@@ -191,7 +218,7 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
   // "Venda ativada" aqui = venda com pelo menos um produto cuja data
   // CONSIDERADA de ativação caia dentro do período (ver dataConsideradaAtivacao).
   const dataAtivacaoRange = dateRangeClause(period);
-  const [vendasLancadas, itemsAtivos, quantidades, taxaAtivacaoColaboradores] = await Promise.all([
+  const [vendasLancadas, itemsAtivos, quantidades, taxaAtivacaoColaboradores, ehRenovFixaMap] = await Promise.all([
     prisma.sale.count({ where }),
     prisma.saleItem.findMany({
       where: {
@@ -199,15 +226,25 @@ async function getKpiTotals(userIds: string[], period: PeriodFilter): Promise<Kp
         ativo: true,
         ...(dataAtivacaoRange ? { OR: [{ sale: { createdAt: dataAtivacaoRange } }, { dataAtivacao: dataAtivacaoRange } ] } : {}),
       },
-      select: { saleId: true, ativo: true, dataAtivacao: true, sale: { select: { createdAt: true } } },
+      select: {
+        saleId: true,
+        indicator: true,
+        ativo: true,
+        dataAtivacao: true,
+        catalogItem: { select: { categoryId: true } },
+        sale: { select: { colaboradorId: true, createdAt: true } },
+      },
     }),
     getQuantidadesPorFrente(userIds, period),
     getTaxaAtivacaoColaboradores(userIds, period),
+    buildEhRenovFixaMap(userIds),
   ]);
 
   const vendasAtivadasIds = new Set<string>();
   for (const it of itemsAtivos) {
-    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao);
+    const ehRenovFixa = ehRenovFixaMap.get(it.sale.colaboradorId) ?? false;
+    const semCarencia = semCarenciaParaItem(it.sale.createdAt, it.indicator, it.catalogItem?.categoryId, ehRenovFixa);
+    const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     if (dataConsiderada && dentroDoPeriodo(dataConsiderada, period)) vendasAtivadasIds.add(it.saleId);
   }
   const vendasAtivadas = vendasAtivadasIds.size;
@@ -348,20 +385,24 @@ export async function getEvolutionSeries(userIds: string[], period: PeriodFilter
     }
   }
 
-  const items = await prisma.saleItem.findMany({
-    where: {
-      sale: { colaboradorId: { in: userIds }, cancelado: false },
-      OR: [{ sale: { createdAt: { gte: from, lte: to } } }, { ativo: true, dataAtivacao: { gte: from, lte: to } }],
-    },
-    select: {
-      indicator: true,
-      pointsTotal: true,
-      valorReais: true,
-      ativo: true,
-      dataAtivacao: true,
-      sale: { select: { createdAt: true } },
-    },
-  });
+  const [items, ehRenovFixaMap] = await Promise.all([
+    prisma.saleItem.findMany({
+      where: {
+        sale: { colaboradorId: { in: userIds }, cancelado: false },
+        OR: [{ sale: { createdAt: { gte: from, lte: to } } }, { ativo: true, dataAtivacao: { gte: from, lte: to } }],
+      },
+      select: {
+        indicator: true,
+        pointsTotal: true,
+        valorReais: true,
+        ativo: true,
+        dataAtivacao: true,
+        catalogItem: { select: { categoryId: true } },
+        sale: { select: { colaboradorId: true, createdAt: true } },
+      },
+    }),
+    buildEhRenovFixaMap(userIds),
+  ]);
 
   for (const item of items) {
     const frente = frenteKeyFromIndicator(item.indicator);
@@ -376,7 +417,9 @@ export async function getEvolutionSeries(userIds: string[], period: PeriodFilter
       ensureBucket(key, label);
       points.get(key)![frente].lancado += valor;
     }
-    const dataConsiderada = dataConsideradaAtivacao(item.sale.createdAt, item.ativo, item.dataAtivacao);
+    const ehRenovFixa = ehRenovFixaMap.get(item.sale.colaboradorId) ?? false;
+    const semCarencia = semCarenciaParaItem(item.sale.createdAt, item.indicator, item.catalogItem?.categoryId, ehRenovFixa);
+    const dataConsiderada = dataConsideradaAtivacao(item.sale.createdAt, item.ativo, item.dataAtivacao, semCarencia);
     if (dataConsiderada && dataConsiderada >= from && dataConsiderada <= to) {
       const { key, label } = keyForDate(dataConsiderada);
       ensureBucket(key, label);

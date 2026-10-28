@@ -184,13 +184,45 @@ export function ehSemCarencia(indicator: string, categoryId: string | null | und
   return false;
 }
 
+/**
+ * Decide se um item específico usa a regra "sem carência" (conta sempre
+ * pelo mês real de ativação, nunca empurra pro mês de registro).
+ *
+ * IMPORTANTE: isso depende do mês em que a VENDA foi registrada
+ * (it.sale.createdAt), NÃO do período que está sendo visualizado no
+ * painel. Uma venda de Aparelhos/Internet Fixa registrada em SET/2026
+ * segue a regra ANTIGA (com carência) pra sempre — mesmo quando ela só
+ * ativa em OUT/2026 e alguém está olhando o resultado de outubro — porque
+ * em setembro essa exceção ainda não existia. Só vendas registradas a
+ * partir de OUT/2026 (CUTOVER_OUT26) usam a regra nova de Aparelhos/
+ * Internet Fixa sempre pelo mês real de ativação.
+ *
+ * Bug real corrigido aqui: antes, a exceção era decidida por
+ * `usaRegraNova(period)` (o período visualizado), então uma venda de
+ * setembro ativada em outubro contava pro resultado de outubro só por
+ * estar vendo o painel de outubro — deveria ter ficado em setembro, como
+ * sempre foi (empurrada pela carência de 2 meses).
+ *
+ * Perfil Renovação Fixa é sempre sem carência, em qualquer mês (perfil
+ * novo, sem "regra antiga" — ver calcularPremiacaoRenovFixa).
+ */
+export function semCarenciaParaItem(
+  saleCreatedAt: Date,
+  indicator: string,
+  categoryId: string | null | undefined,
+  ehRenovFixa: boolean
+): boolean {
+  if (ehRenovFixa) return true;
+  if (saleCreatedAt < CUTOVER_OUT26) return false;
+  return ehSemCarencia(indicator, categoryId);
+}
+
 async function sumPontosPorIndicador(
   colaboradorId: string,
   period: PeriodFilter,
-  regraNova: boolean,
   // Perfil Renovação Fixa: SEMPRE pelo mês real de ativação, nunca
   // "empurra" pro mês de registro — ver calcularPremiacaoRenovFixa.
-  forcarSemCarencia: boolean = false
+  ehRenovFixa: boolean = false
 ): Promise<{ lancado: PontosAcc; ativado: PontosAcc }> {
   const range = rangeDoPeriodo(period);
 
@@ -215,10 +247,9 @@ async function sumPontosPorIndicador(
 
   for (const it of items) {
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    // A exceção de "sem carência" (Aparelhos/Internet Fixa contam pelo mês
-    // real de ativação) só vale na regra nova (a partir de OUT/2026) — exceto
-    // para o perfil Renovação Fixa, que não tem carência em NENHUM indicador.
-    const semCarencia = forcarSemCarencia || (regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId));
+    // A exceção de "sem carência" depende do mês em que ESSA VENDA foi
+    // registrada, não do período visualizado (ver semCarenciaParaItem).
+    const semCarencia = semCarenciaParaItem(it.sale.createdAt, it.indicator, it.catalogItem?.categoryId, ehRenovFixa);
     const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (contaLancado) somarNoAcc(lancado, it.indicator, it.pointsTotal, it.valorReais);
@@ -361,7 +392,6 @@ export async function getProdutosPorFrente(
   period: PeriodFilter = {}
 ): Promise<ProdutosPorFrente> {
   const range = rangeDoPeriodo(period);
-  const regraNova = usaRegraNova(period);
   const colaborador = await prisma.user.findUnique({ where: { id: colaboradorId }, select: { perfil: true } });
   const ehRenovFixa = colaborador?.perfil === "RENOVACAO_FIXA";
 
@@ -398,7 +428,7 @@ export async function getProdutosPorFrente(
     const frente = frenteDoIndicador(it.indicator);
     if (!frente) continue;
     const contaLancado = !range || dentroDoPeriodo(it.sale.createdAt, period);
-    const semCarencia = ehRenovFixa || (regraNova && ehSemCarencia(it.indicator, it.catalogItem?.categoryId));
+    const semCarencia = semCarenciaParaItem(it.sale.createdAt, it.indicator, it.catalogItem?.categoryId, ehRenovFixa);
     const dataConsiderada = dataConsideradaAtivacao(it.sale.createdAt, it.ativo, it.dataAtivacao, semCarencia);
     const contaAtivado = dataConsiderada !== null && (!range || dentroDoPeriodo(dataConsiderada, period));
     if (!contaLancado && !contaAtivado) continue;
@@ -468,7 +498,7 @@ export async function getPainelColaborador(
     faixaRampagem && faixaRampagem.length > 0 ? { ...tables, faixasRenovFixa: faixaRampagem } : tables;
 
   const [{ lancado: lancadoAgg, ativado: ativadoAgg }, faltou, blAtivadas] = await Promise.all([
-    sumPontosPorIndicador(colaboradorId, period, regraNova, ehRenovFixa),
+    sumPontosPorIndicador(colaboradorId, period, ehRenovFixa),
     getFaltouInjustificada(colaboradorId, period),
     contarBLsAtivadas(colaboradorId, period),
   ]);
